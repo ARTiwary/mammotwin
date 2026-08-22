@@ -1,0 +1,31 @@
+# Core
+numpy
+pandas
+scikit-learn
+matplotlib
+pyyaml
+
+# Imaging
+opencv-python
+pydicom
+Pillow
+albumentations
+
+# Deep learning (installs CPU build by default;
+# see SETUP.md for the GPU/CUDA-specific command)
+torch
+torchvision
+monai
+
+# Explainability / uncertainty (added ahead of time; used from Phase 10-11)
+grad-cam
+torchmetrics
+
+# Backend (added ahead of time; used from Phase 15)
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Dev / testing
+pytest
+jupyter

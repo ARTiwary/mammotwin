@@ -1,0 +1,42 @@
+# MammoTwin central config.
+# Every script/module reads paths, seed, and hyperparameters from here so
+# training and inference can never silently drift apart.
+
+project:
+  name: MammoTwin
+  seed: 42
+
+paths:
+  data_raw: data/raw
+  data_processed: data/processed
+  data_metadata: data/metadata
+  data_external: data/external
+  models_dir: models
+  reports_dir: reports
+  figures_dir: reports/figures
+
+preprocessing:
+  image_size: [224, 224]       # [height, width], final model input size
+  clip_percentile: [1, 99]     # intensity clipping before normalization
+  normalize_range: [0.0, 1.0]  # output pixel range after normalization
+
+training:
+  batch_size: 16
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  num_epochs: 30
+  num_workers: 4
+  early_stopping_patience: 5
+
+model:
+  backbone: resnet50
+  pretrained: true
+  num_classes: 2               # e.g. benign / malignant
+  dropout: 0.3
+
+uncertainty:
+  mc_dropout_passes: 20
+  review_threshold: 0.6        # predictions below this confidence get flagged
+
+logging:
+  experiments_log: reports/eval_results/experiments_log.csv
