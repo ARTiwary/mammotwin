@@ -21,6 +21,9 @@ frontend/node_modules/
 frontend/build/
 frontend/.env
 
+# Raw dataset downloads placed inside the repo (e.g. Datasets/csv, Datasets/jpeg)
+Datasets/
+
 # Jupyter
 .ipynb_checkpoints/
 
