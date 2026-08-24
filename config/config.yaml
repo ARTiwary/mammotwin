@@ -19,6 +19,13 @@ preprocessing:
   image_size: [224, 224]       # [height, width], final model input size
   clip_percentile: [1, 99]     # intensity clipping before normalization
   normalize_range: [0.0, 1.0]  # output pixel range after normalization
+  remove_background: true      # crop to breast tissue, discard label artifacts
+  background_padding: 10       # pixels of padding kept around the detected breast region
+
+quality_checks:
+  blank_std_threshold: 3.0
+  low_contrast_range_fraction: 0.08
+  min_breast_area_fraction: 0.03
 
 training:
   batch_size: 16

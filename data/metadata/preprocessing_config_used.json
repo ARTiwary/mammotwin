@@ -1,0 +1,23 @@
+{
+  "preprocessing": {
+    "image_size": [
+      224,
+      224
+    ],
+    "clip_percentile": [
+      1,
+      99
+    ],
+    "normalize_range": [
+      0.0,
+      1.0
+    ],
+    "remove_background": true,
+    "background_padding": 10
+  },
+  "quality_checks": {
+    "blank_std_threshold": 3.0,
+    "low_contrast_range_fraction": 0.08,
+    "min_breast_area_fraction": 0.03
+  }
+}

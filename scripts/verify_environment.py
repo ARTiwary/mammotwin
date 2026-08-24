@@ -79,9 +79,11 @@ def main():
     print(f"Raw image shape: {raw_img.shape}, dtype: {raw_img.dtype}, "
           f"min: {raw_img.min():.2f}, max: {raw_img.max():.2f}")
 
-    processed_img = preprocess_image(raw_img, config)
+    processed_result = preprocess_image(raw_img, config, run_quality_gate=True)
+    processed_img = processed_result["processed"]
     print(f"Processed image shape: {processed_img.shape}, dtype: {processed_img.dtype}, "
           f"min: {processed_img.min():.3f}, max: {processed_img.max():.3f}")
+    print(f"Quality check flags: {processed_result['quality']}")
 
     # Display before / after
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
