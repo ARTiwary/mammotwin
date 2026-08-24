@@ -29,3 +29,4 @@ python-multipart
 # Dev / testing
 pytest
 jupyter
+tabulate
