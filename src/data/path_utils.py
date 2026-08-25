@@ -64,6 +64,22 @@ def resolve_kaggle_path(raw_path: str, local_jpeg_root: str):
     return os.path.join(folder, files[0]), len(files)
 
 
+def get_all_candidates(raw_path: str, local_jpeg_root: str) -> list:
+    """Return ALL image file paths found in the raw_path's series UID folder
+    (not just the first, sorted, arbitrary pick that resolve_kaggle_path
+    returns). Needed to disambiguate mask-vs-cropped-image when a series UID
+    is shared between the two roles (see roi_utils.py)."""
+    uid = extract_series_uid(raw_path)
+    if uid is None:
+        return []
+    folder = os.path.join(local_jpeg_root, uid)
+    if not os.path.isdir(folder):
+        return []
+    files = sorted(f for f in os.listdir(folder)
+                    if f.lower().endswith((".jpg", ".jpeg", ".png")))
+    return [os.path.join(folder, f) for f in files]
+
+
 def add_resolved_paths(df, local_jpeg_root: str):
     """Add `<col>_resolved` and `<col>_n_candidates` for each of the three
     CBIS-DDSM path columns present in df."""
