@@ -1,0 +1,18 @@
+{
+  "baseline_resnet50_20260824_215829": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\baseline_resnet50_20260824_215829.pt",
+    "backbone": "resnet50",
+    "trained_date": "2026-08-24T22:11:31",
+    "val_auc": 0.5358537986500072,
+    "val_pr_auc": 0.40237970503484743,
+    "seed": 42
+  },
+  "baseline_resnet50_20260825_114630": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\baseline_resnet50_20260825_114630.pt",
+    "backbone": "resnet50",
+    "trained_date": "2026-08-25T12:37:40",
+    "val_auc": 0.794363061898607,
+    "val_pr_auc": 0.7092867188755929,
+    "seed": 42
+  }
+}

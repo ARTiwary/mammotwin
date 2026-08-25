@@ -21,7 +21,7 @@ import numpy as np
 import cv2
 
 
-def remove_background(img: np.ndarray, padding: int = 10) -> dict:
+def remove_background(img: np.ndarray, padding: int = 10, max_detection_dim: int = 512) -> dict:
     """
     Returns a dict with:
       'cropped': the breast region, background-masked and cropped
@@ -30,8 +30,27 @@ def remove_background(img: np.ndarray, padding: int = 10) -> dict:
           the detected breast component (useful as a quality signal —
           a very small fraction usually means segmentation failed or the
           image is mostly empty)
+
+    Performance note: Otsu thresholding + connected components is run on a
+    DOWNSAMPLED copy of the image (capped at max_detection_dim on the
+    longer side), not the full-resolution original. CBIS-DDSM mammograms
+    can be 3000-5000+ pixels on a side, and running this detection at full
+    resolution on every image, every epoch, is a major and unnecessary
+    training bottleneck — thresholding-based breast segmentation doesn't
+    need full resolution to find the right region. The detected box is
+    scaled back up to full-resolution coordinates before cropping, so the
+    actual crop still uses full pixel detail.
     """
-    img_uint8 = _to_uint8(img)
+    original_h, original_w = img.shape[:2]
+    scale = min(1.0, max_detection_dim / max(original_h, original_w))
+
+    if scale < 1.0:
+        small_img = cv2.resize(img, (int(original_w * scale), int(original_h * scale)),
+                                interpolation=cv2.INTER_AREA)
+    else:
+        small_img = img
+
+    img_uint8 = _to_uint8(small_img)
 
     # Otsu picks the threshold automatically; +1 avoids losing very faint
     # tissue at the breast's edge, which we do NOT want to discard.
@@ -44,7 +63,7 @@ def remove_background(img: np.ndarray, padding: int = 10) -> dict:
         # checks will catch this separately; return the image unchanged.
         return {
             "cropped": img,
-            "bbox": (0, 0, img.shape[1], img.shape[0]),
+            "bbox": (0, 0, original_w, original_h),
             "breast_area_fraction": 0.0,
         }
 
@@ -56,17 +75,23 @@ def remove_background(img: np.ndarray, padding: int = 10) -> dict:
     y = stats[largest_label, cv2.CC_STAT_TOP]
     w = stats[largest_label, cv2.CC_STAT_WIDTH]
     h = stats[largest_label, cv2.CC_STAT_HEIGHT]
-    breast_area = stats[largest_label, cv2.CC_STAT_AREA]
+    breast_area_small = stats[largest_label, cv2.CC_STAT_AREA]
 
-    # Add padding, clipped to image bounds.
+    # Scale the detected box from downsampled coords back to full resolution.
+    inv_scale = 1.0 / scale
+    x, y, w, h = (int(round(v * inv_scale)) for v in (x, y, w, h))
+
+    # Add padding, clipped to ORIGINAL image bounds.
     x0 = max(0, x - padding)
     y0 = max(0, y - padding)
-    x1 = min(img.shape[1], x + w + padding)
-    y1 = min(img.shape[0], y + h + padding)
+    x1 = min(original_w, x + w + padding)
+    y1 = min(original_h, y + h + padding)
 
     cropped = img[y0:y1, x0:x1].copy()
 
-    breast_area_fraction = float(breast_area) / (img.shape[0] * img.shape[1])
+    # breast_area_fraction is scale-invariant (both areas scale by the same
+    # factor²), so it can be computed directly from the downsampled stats.
+    breast_area_fraction = float(breast_area_small) / (small_img.shape[0] * small_img.shape[1])
 
     return {
         "cropped": cropped,
