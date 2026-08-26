@@ -19,7 +19,6 @@ monai
 
 # Explainability / uncertainty (added ahead of time; used from Phase 10-11)
 grad-cam
-torchmetrics
 
 # Backend (added ahead of time; used from Phase 15)
 fastapi
@@ -30,4 +29,3 @@ python-multipart
 pytest
 jupyter
 tabulate
-pycocotools

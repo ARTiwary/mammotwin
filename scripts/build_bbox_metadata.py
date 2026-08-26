@@ -122,7 +122,13 @@ def generate_demo_rows(n=15, seed=42):
 
 def main():
     parser = argparse.ArgumentParser(description="MammoTwin Phase 7: bbox ground truth")
-    parser.add_argument("--metadata-csv", type=str, default=None)
+    parser.add_argument("--metadata-csv", type=str, default=None,
+                         help="Override: explicit path to a metadata CSV. "
+                              "Normally use --split instead.")
+    parser.add_argument("--split", type=str, default="train", choices=["train", "val", "test"],
+                         help="Which locked Phase 3 split to build bbox ground truth for. "
+                              "Builds data/metadata/<split>_split.csv -> bbox_metadata_<split>.csv, "
+                              "so Phase 7 never mixes patients across splits.")
     parser.add_argument("--raw-images-dir", type=str, default=None)
     parser.add_argument("--limit", type=int, default=300)
     parser.add_argument("--demo", action="store_true")
@@ -134,8 +140,9 @@ def main():
     if args.demo:
         print("Running Phase 7 bbox extraction in DEMO mode.\n")
         df, raw_images_dir = generate_demo_rows()
+        out_name = "demo_bbox_metadata.csv"
     else:
-        metadata_csv = args.metadata_csv or os.path.join(metadata_dir, "metadata.csv")
+        metadata_csv = args.metadata_csv or os.path.join(metadata_dir, f"{args.split}_split.csv")
         if not os.path.exists(metadata_csv):
             print(f"No metadata CSV at {metadata_csv}. Run Phase 3 first, or pass --demo.")
             return
@@ -144,7 +151,13 @@ def main():
             return
         df = pd.read_csv(metadata_csv).head(args.limit)
         raw_images_dir = args.raw_images_dir
-        print(f"Processing {len(df)} rows (--limit {args.limit})...\n")
+        out_name = f"bbox_metadata_{args.split}.csv"
+        print(f"Building bbox ground truth for the '{args.split}' split "
+              f"({metadata_csv}), {len(df)} rows (--limit {args.limit})...\n")
+        if args.split == "test":
+            print("NOTE: this is the LOCKED test set. Only run this once you're "
+                  "actually ready for Phase 14 final evaluation, not for routine "
+                  "development iteration.\n")
 
     results = []
     for _, row in df.iterrows():
@@ -175,7 +188,7 @@ def main():
         assert n_correct == n_success, "Some demo boxes did not match expected values!"
         print("Demo self-check PASSED.")
 
-    out_path = os.path.join(metadata_dir, "demo_bbox_metadata.csv" if args.demo else "bbox_metadata.csv")
+    out_path = os.path.join(metadata_dir, out_name)
     os.makedirs(metadata_dir, exist_ok=True)
     result_df.to_csv(out_path, index=False)
     print(f"\nSaved: {out_path}")

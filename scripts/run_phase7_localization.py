@@ -7,6 +7,12 @@ data/metadata/bbox_metadata.csv.
 Real data:
     python scripts/run_phase7_localization.py --epochs 10
 
+Detection is resolution-sensitive for small objects (lesions can be tiny
+even within a full mammogram) — the classifier's 224x224 config.yaml
+setting may be too small for good localization. Override just for this
+script with --image-size, without touching config.yaml or Phase 6:
+    python scripts/run_phase7_localization.py --epochs 20 --image-size 384
+
 Demo mode (synthetic data, proves the full pipeline runs end-to-end):
     python scripts/run_phase7_localization.py --demo --epochs 2
 """
@@ -14,6 +20,7 @@ Demo mode (synthetic data, proves the full pipeline runs end-to-end):
 import os
 import sys
 import argparse
+import copy
 from datetime import datetime
 
 import numpy as np
@@ -27,7 +34,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 from src.utils.config import load_config, set_global_seed
 from src.data.detection_dataset import LesionDetectionDataset, detection_collate_fn
@@ -59,25 +66,20 @@ def train_one_epoch(model, loader, optimizer, device):
 def evaluate(model, loader, device, score_threshold: float = 0.3):
     """Returns (mAP metrics dict, list of (image_tensor, pred_boxes, gt_boxes)
     examples for visualization)."""
-    from torchmetrics.detection.mean_ap import MeanAveragePrecision
+    from src.utils.detection_metrics import compute_detection_metrics
 
     model.eval()
-    metric = MeanAveragePrecision(box_format="xyxy")
+    all_predictions, all_ground_truths = [], []
     examples = []
 
     for images, targets in loader:
         images_device = [img.to(device) for img in images]
         predictions = model(images_device)
 
-        preds_formatted = [{
-            "boxes": p["boxes"].cpu(), "scores": p["scores"].cpu(), "labels": p["labels"].cpu(),
-        } for p in predictions]
-        targets_formatted = [{
-            "boxes": t["boxes"].cpu(), "labels": t["labels"].cpu(),
-        } for t in targets]
-        metric.update(preds_formatted, targets_formatted)
-
         for img, pred, tgt in zip(images, predictions, targets):
+            all_predictions.append({"boxes": pred["boxes"].cpu(), "scores": pred["scores"].cpu()})
+            all_ground_truths.append({"boxes": tgt["boxes"].cpu()})
+
             if len(examples) < 4:
                 keep = pred["scores"] > score_threshold
                 examples.append((
@@ -87,8 +89,8 @@ def evaluate(model, loader, device, score_threshold: float = 0.3):
                     tgt["boxes"].cpu().numpy(),
                 ))
 
-    results = metric.compute()
-    return {k: float(v) for k, v in results.items() if v.numel() == 1}, examples
+    results = compute_detection_metrics(all_predictions, all_ground_truths)
+    return results, examples
 
 
 def save_prediction_figure(examples, out_path):
@@ -142,17 +144,28 @@ def generate_demo_dataset(config, n=20, seed=42):
 
 def main():
     parser = argparse.ArgumentParser(description="MammoTwin Phase 7: lesion localization")
-    parser.add_argument("--bbox-metadata-csv", type=str, default=None)
+    parser.add_argument("--train-bbox-csv", type=str, default=None)
+    parser.add_argument("--val-bbox-csv", type=str, default=None)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--lr", type=float, default=0.0001)
-    parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--image-size", type=int, default=None,
+                         help="Override preprocessing.image_size (both dims) for THIS "
+                              "script only — doesn't touch config.yaml or Phase 6's "
+                              "classifier. Detection is resolution-sensitive for small "
+                              "lesions; try 384 or 512 if the default (from config.yaml, "
+                              "usually 224) gives poor localization.")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--config", type=str, default=None)
     args = parser.parse_args()
 
     config = load_config(args.config) if args.config else load_config()
+    if args.image_size:
+        config = copy.deepcopy(config)
+        config["preprocessing"]["image_size"] = [args.image_size, args.image_size]
+        print(f"Overriding image_size to {args.image_size}x{args.image_size} for detection.\n")
+
     seed = config["project"]["seed"]
     set_global_seed(seed)
     torch.manual_seed(seed)
@@ -162,30 +175,32 @@ def main():
 
     if args.demo:
         print("Running Phase 7 in DEMO mode on synthetic data.\n")
-        bbox_df = generate_demo_dataset(config)
+        train_bbox_df = generate_demo_dataset(config, n=20, seed=seed)
+        val_bbox_df = generate_demo_dataset(config, n=6, seed=seed + 1)
     else:
         metadata_dir = config["paths"]["data_metadata"]
-        bbox_csv = args.bbox_metadata_csv or os.path.join(metadata_dir, "bbox_metadata.csv")
-        if not os.path.exists(bbox_csv):
-            print(f"No bbox metadata at {bbox_csv}. Run scripts/build_bbox_metadata.py first, "
-                  f"or pass --demo.")
+        train_csv = args.train_bbox_csv or os.path.join(metadata_dir, "bbox_metadata_train.csv")
+        val_csv = args.val_bbox_csv or os.path.join(metadata_dir, "bbox_metadata_val.csv")
+        if not (os.path.exists(train_csv) and os.path.exists(val_csv)):
+            print(f"Could not find {train_csv} / {val_csv}.")
+            print("Run: python scripts/build_bbox_metadata.py --split train --raw-images-dir ...")
+            print("And: python scripts/build_bbox_metadata.py --split val --raw-images-dir ...")
+            print("(or pass --demo)")
             return
-        bbox_df = pd.read_csv(bbox_csv)
-        bbox_df = bbox_df[bbox_df["has_bbox"] == True]  # noqa: E712
+        train_bbox_df = pd.read_csv(train_csv)
+        val_bbox_df = pd.read_csv(val_csv)
+        train_bbox_df = train_bbox_df[train_bbox_df["has_bbox"] == True]  # noqa: E712
+        val_bbox_df = val_bbox_df[val_bbox_df["has_bbox"] == True]  # noqa: E712
 
-    full_dataset = LesionDetectionDataset(bbox_df, config)
-    print(f"Total usable images with bounding boxes: {len(full_dataset)}")
-    if len(full_dataset) < 4:
+    train_dataset = LesionDetectionDataset(train_bbox_df, config)
+    val_dataset = LesionDetectionDataset(val_bbox_df, config)
+    print(f"Train: {len(train_dataset)} | Val: {len(val_dataset)}\n")
+
+    if len(train_dataset) < 4 or len(val_dataset) < 1:
         print("Too few images with valid bounding boxes to train/evaluate. "
-              "Run build_bbox_metadata.py on more data, or check the failure reasons.")
+              "Run build_bbox_metadata.py with a higher --limit (or no limit), "
+              "or check the failure reasons from that script.")
         return
-
-    n_val = max(1, int(len(full_dataset) * args.val_fraction))
-    n_train = len(full_dataset) - n_val
-    train_dataset, val_dataset = random_split(
-        full_dataset, [n_train, n_val], generator=torch.Generator().manual_seed(seed)
-    )
-    print(f"Train: {n_train} | Val: {n_val}\n")
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
                                num_workers=args.num_workers, collate_fn=detection_collate_fn)
