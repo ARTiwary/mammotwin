@@ -45,5 +45,11 @@ uncertainty:
   mc_dropout_passes: 20
   review_threshold: 0.6        # predictions below this confidence get flagged
 
+segmentation:
+  base_filters: 32             # U-Net base channel count (doubles each level)
+  batch_size: 4
+  learning_rate: 0.0001
+  bce_weight: 0.5              # weight of BCE vs Dice in the combined loss
+
 logging:
   experiments_log: reports/eval_results/experiments_log.csv
