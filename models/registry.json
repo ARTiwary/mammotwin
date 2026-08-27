@@ -14,5 +14,14 @@
     "val_auc": 0.794363061898607,
     "val_pr_auc": 0.7092867188755929,
     "seed": 42
+  },
+  "lesion_crop_resnet50_20260827_082204": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\lesion_crop_resnet50_20260827_082204.pt",
+    "backbone": "resnet50",
+    "trained_date": "2026-08-27T09:12:47",
+    "val_auc": 0.730674342105263,
+    "val_pr_auc": 0.6415050143449097,
+    "seed": 42,
+    "phase": "9_lesion_crop"
   }
 }

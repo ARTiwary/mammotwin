@@ -71,6 +71,7 @@ def process_row(row, raw_images_dir):
     return {
         "has_bbox": True, "reason": "ok",
         "image_file_path_resolved": full_path,
+        "pathology_binary": row.get("pathology_binary"),
         "bbox_x": x, "bbox_y": y, "bbox_w": w, "bbox_h": h,
         "bbox_x_norm": nx, "bbox_y_norm": ny, "bbox_w_norm": nw, "bbox_h_norm": nh,
         "fill_ratio": bbox_result["fill_ratio"],
@@ -112,6 +113,7 @@ def generate_demo_rows(n=15, seed=42):
         rows.append({
             "image_id": f"demo_{i}",
             "image_file_path_resolved": full_path,
+            "pathology_binary": rng.choice(["benign", "malignant"]),
             # raw_mask_path needs to resolve (via extract_series_uid) to folder "uid_i"
             "roi_mask_file_path": f"SomeCase_{i}/some_uid/uid_{i}/000000.dcm",
             "expected_bbox": (bx, by, bw, bh),

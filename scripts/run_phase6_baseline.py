@@ -66,17 +66,7 @@ def generate_synthetic_split_csvs(n_train=24, n_val=8, seed=42):
     return make_split(n_train, 0), make_split(n_val, n_train)
 
 
-def compute_class_weights(dataset: MammogramDataset, num_classes: int) -> torch.Tensor:
-    """Inverse-frequency class weighting for CrossEntropyLoss, so the
-    majority class doesn't dominate the loss on an imbalanced dataset."""
-    counts = dataset.class_counts()  # e.g. {'benign': 1470, 'malignant': 1031}
-    total = sum(counts.values())
-    weights = torch.ones(num_classes)
-    for label_name, label_idx in LABEL_MAP.items():
-        count = counts.get(label_name, 0)
-        if count > 0:
-            weights[label_idx] = total / (num_classes * count)
-    return weights
+from src.utils.class_weights import compute_class_weights
 
 
 def run_epoch(model, loader, criterion, optimizer, device, train: bool):
@@ -187,7 +177,7 @@ def main():
 
     # --- Model, loss, optimizer ---
     model = build_classifier(config).to(device)
-    class_weights = compute_class_weights(train_dataset, config["model"]["num_classes"]).to(device)
+    class_weights = compute_class_weights(train_dataset.class_counts(), config["model"]["num_classes"]).to(device)
     print(f"Class weights (inverse frequency): {class_weights.tolist()}")
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr,
