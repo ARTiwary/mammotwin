@@ -202,7 +202,7 @@ def main():
 
         val_auc = None
         if len(np.unique(val_labels)) > 1:
-            from sklearn.metrics import roc_auc_score
+            from src.utils.stats import roc_auc_score
             val_auc = roc_auc_score(val_labels, val_probs)
 
         history["train_loss"].append(train_loss)
@@ -215,7 +215,7 @@ def main():
 
         if val_auc is not None and val_auc > best_val_auc:
             best_val_auc = val_auc
-            from sklearn.metrics import average_precision_score
+            from src.utils.stats import average_precision_score
             best_val_pr_auc = average_precision_score(val_labels, val_probs)
             # Cache these NOW, while we have them, instead of reloading the
             # checkpoint and re-running the val DataLoader afterward — that

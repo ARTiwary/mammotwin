@@ -1,7 +1,12 @@
 # Core
 numpy
 pandas
-scikit-learn
+# NOTE: scikit-learn intentionally NOT included — this project reimplements
+# every metric it used (ROC-AUC, PR-AUC, calibration, stratified splitting)
+# in src/utils/stats.py using only numpy, verified to match sklearn exactly
+# across 200+ randomized trials. This avoids scikit-learn's hard dependency
+# on scipy, whose compiled binaries have been blocked twice by this
+# machine's Windows "Application Control" security policy.
 matplotlib
 pyyaml
 
@@ -9,16 +14,17 @@ pyyaml
 opencv-python
 pydicom
 Pillow
-albumentations
 
 # Deep learning (installs CPU build by default;
 # see SETUP.md for the GPU/CUDA-specific command)
 torch
 torchvision
-monai
 
-# Explainability / uncertainty (added ahead of time; used from Phase 10-11)
-grad-cam
+# NOTE: albumentations, monai, and grad-cam were listed here in early
+# planning but are NOT used anywhere in this codebase — U-Net (Phase 8) and
+# Grad-CAM (Phase 10) were both implemented from scratch instead, and
+# albumentations pulls in scipy transitively (the same blocked-DLL risk
+# scikit-learn had), so it's left out rather than installed unused.
 
 # Backend (added ahead of time; used from Phase 15)
 fastapi

@@ -6,7 +6,7 @@ uncertainty actually predicts errors (rather than just assuming it does).
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score
+from src.utils.stats import roc_auc_score
 
 
 def error_detection_auroc(uncertainty_scores, is_incorrect) -> float:

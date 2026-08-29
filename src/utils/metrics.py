@@ -6,8 +6,8 @@ ROC-AUC, PR-AUC, sensitivity, specificity, precision, F1, balanced accuracy.
 """
 
 import numpy as np
-from sklearn.metrics import (
-    roc_auc_score, average_precision_score, confusion_matrix,
+from src.utils.stats import (
+    roc_auc_score, average_precision_score, confusion_matrix_binary,
     precision_score, f1_score, balanced_accuracy_score, accuracy_score,
 )
 
@@ -21,7 +21,7 @@ def compute_classification_metrics(y_true, y_prob, threshold: float = 0.5) -> di
     y_prob = np.asarray(y_prob)
     y_pred = (y_prob >= threshold).astype(int)
 
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+    tn, fp, fn, tp = confusion_matrix_binary(y_true, y_pred)
     sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0  # a.k.a. recall
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
 

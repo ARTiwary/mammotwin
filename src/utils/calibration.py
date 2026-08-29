@@ -14,8 +14,7 @@ better, 0 is perfect).
 
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.calibration import calibration_curve
-from sklearn.metrics import brier_score_loss
+from src.utils.stats import calibration_curve, brier_score_loss
 
 
 def compute_calibration_metrics(y_true, y_prob, n_bins: int = 10) -> dict:

@@ -15,7 +15,7 @@ This module:
 """
 
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from src.utils.stats import train_test_split_stratified
 
 
 def aggregate_patient_labels(df: pd.DataFrame,
@@ -52,21 +52,17 @@ def patient_level_split(df: pd.DataFrame,
     patient_labels = aggregate_patient_labels(df, patient_col, label_col)
 
     # Stage 1: carve out the test set of patients.
-    train_val_patients, test_patients = train_test_split(
-        patient_labels,
-        test_size=test_size,
-        stratify=patient_labels["patient_level_label"],
-        random_state=seed,
+    train_val_patients, test_patients = train_test_split_stratified(
+        patient_labels, test_size=test_size,
+        stratify_col="patient_level_label", random_state=seed,
     )
 
     # Stage 2: split the remainder into train/val. val_size is expressed as
     # a fraction of the ORIGINAL population, so rescale relative to what's left.
     relative_val_size = val_size / (1.0 - test_size)
-    train_patients, val_patients = train_test_split(
-        train_val_patients,
-        test_size=relative_val_size,
-        stratify=train_val_patients["patient_level_label"],
-        random_state=seed,
+    train_patients, val_patients = train_test_split_stratified(
+        train_val_patients, test_size=relative_val_size,
+        stratify_col="patient_level_label", random_state=seed,
     )
 
     train_ids = set(train_patients[patient_col])
