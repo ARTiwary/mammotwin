@@ -16,6 +16,7 @@ from torch.utils.data import Dataset
 
 from src.data.image_io import load_image
 from src.preprocessing.basic_preprocess import normalize_image, resize_image
+from src.preprocessing.augmentation import augment_image
 from src.utils.class_weights import LABEL_MAP
 
 
@@ -23,12 +24,16 @@ class LesionCropDataset(Dataset):
     def __init__(self, bbox_metadata_df, config,
                  path_col: str = "image_file_path_resolved",
                  label_col: str = "pathology_binary",
-                 crop_padding_fraction: float = 0.2):
+                 crop_padding_fraction: float = 0.2,
+                 augment: bool = False):
         """
         crop_padding_fraction: extra context kept around the tight lesion
         bbox on each side (as a fraction of box width/height) — a small
         margin around the lesion is standard practice, since a zero-margin
         crop can cut off diagnostically relevant boundary/margin texture.
+
+        augment: apply random flip/rotation/brightness-contrast to the
+        CROPPED region — set True for training only, never val/test.
         """
         df = bbox_metadata_df.copy()
         if "has_bbox" in df.columns:
@@ -41,6 +46,7 @@ class LesionCropDataset(Dataset):
         self.path_col = path_col
         self.label_col = label_col
         self.crop_padding_fraction = crop_padding_fraction
+        self.augment = augment
 
     def __len__(self):
         return len(self.df)
@@ -59,6 +65,9 @@ class LesionCropDataset(Dataset):
         crop = img[y0:y1, x0:x1]
         if crop.size == 0:  # degenerate box, extremely rare edge case
             crop = img
+
+        if self.augment:
+            crop = augment_image(crop, seed=None)
 
         clip_percentile = tuple(self.config["preprocessing"]["clip_percentile"])
         image_size = tuple(self.config["preprocessing"]["image_size"])

@@ -3,3 +3,5 @@ baseline_resnet50_20260824_215829,2026-08-24T22:11:31,6_baseline,resnet50,train/
 baseline_resnet50_20260825_114630,2026-08-25T12:37:40,6_baseline,resnet50,train/val,42,"epochs=30,batch_size=16,lr=0.0001",0.7944,0.7093,,,
 lesion_crop_resnet50_20260827_082204,2026-08-27T09:12:47,9_lesion_crop,resnet50,train/val,42,"epochs=30,batch_size=16,lr=0.0001,crop_padding=0.2",0.7307,0.6415,,,
 multimodal_resnet50_20260829_090600,2026-08-29T10:49:47,13_multimodal,resnet50,train/val,42,"epochs=30,batch_size=16,lr=0.0001",0.7938,0.7180,,,
+baseline_resnet50_20260831_193348,2026-08-31T22:02:15,6_baseline,resnet50,train/val,42,"epochs=30,batch_size=16,lr=0.0001",0.8184,0.7628,,,
+lesion_crop_resnet50_20260831_220226,2026-08-31T22:36:37,9_lesion_crop,resnet50,train/val,42,"epochs=30,batch_size=16,lr=0.0001,crop_padding=0.2",0.7311,0.6647,,,

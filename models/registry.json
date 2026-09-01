@@ -32,5 +32,22 @@
     "val_pr_auc": 0.7180264484945114,
     "seed": 42,
     "phase": "13_multimodal"
+  },
+  "baseline_resnet50_20260831_193348": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\baseline_resnet50_20260831_193348.pt",
+    "backbone": "resnet50",
+    "trained_date": "2026-08-31T22:02:15",
+    "val_auc": 0.8184331466321988,
+    "val_pr_auc": 0.7628234243997517,
+    "seed": 42
+  },
+  "lesion_crop_resnet50_20260831_220226": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\lesion_crop_resnet50_20260831_220226.pt",
+    "backbone": "resnet50",
+    "trained_date": "2026-08-31T22:36:37",
+    "val_auc": 0.7311453349282296,
+    "val_pr_auc": 0.6647446470237135,
+    "seed": 42,
+    "phase": "9_lesion_crop"
   }
 }

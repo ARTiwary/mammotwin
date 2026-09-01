@@ -152,6 +152,9 @@ def main():
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--config", type=str, default=None)
+    parser.add_argument("--no-augment", action="store_true")
+    parser.add_argument("--no-quality-filter", action="store_true")
+    parser.add_argument("--quality-report", type=str, default=None)
     args = parser.parse_args()
 
     config = load_config(args.config) if args.config else load_config()
@@ -194,9 +197,15 @@ def main():
     tabular_pp.fit(train_df)  # fit on TRAIN only
     print(f"Tabular feature vector size: {tabular_pp.output_dim}\n")
 
-    train_dataset = MultimodalDataset(train_df, config, tabular_pp)
-    val_dataset = MultimodalDataset(val_df, config, tabular_pp)
-    print(f"Train: {len(train_dataset)} images, class counts: {train_dataset.class_counts()}")
+    if not args.demo and not args.no_quality_filter:
+        from src.data.quality_filter import filter_by_quality
+        quality_report_path = args.quality_report or os.path.join(metadata_dir, "quality_report.csv")
+        train_df = filter_by_quality(train_df, quality_report_path)
+
+    train_dataset = MultimodalDataset(train_df, config, tabular_pp, augment=(not args.no_augment))
+    val_dataset = MultimodalDataset(val_df, config, tabular_pp, augment=False)
+    print(f"Train: {len(train_dataset)} images, class counts: {train_dataset.class_counts()} "
+          f"(augmentation: {'ON' if not args.no_augment else 'OFF'})")
     print(f"Val:   {len(val_dataset)} images, class counts: {val_dataset.class_counts()}\n")
 
     if len(train_dataset) < 4 or len(val_dataset) < 2:
@@ -213,6 +222,7 @@ def main():
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr,
                                   weight_decay=config["training"].get("weight_decay", 0.0))
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=2)
 
     models_dir = config["paths"]["models_dir"]
     figures_dir = config["paths"]["figures_dir"]
@@ -238,6 +248,12 @@ def main():
         auc_str = f"{val_auc:.4f}" if val_auc is not None else "N/A"
         print(f"Epoch {epoch:3d}/{epochs} | train_loss: {train_loss:.4f} | "
               f"val_loss: {val_loss:.4f} | val_auc: {auc_str}")
+
+        prev_lr = optimizer.param_groups[0]["lr"]
+        scheduler.step(val_loss)
+        new_lr = optimizer.param_groups[0]["lr"]
+        if new_lr < prev_lr:
+            print(f"  -> Reducing learning rate: {prev_lr:.2e} -> {new_lr:.2e}")
 
         if val_auc is not None and val_auc > best_val_auc:
             best_val_auc = val_auc

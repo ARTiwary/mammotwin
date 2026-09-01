@@ -219,6 +219,45 @@ def train_test_split_stratified(items_df, test_size: float, stratify_col: str, r
     return train_df, test_df
 
 
+def bootstrap_ci(y_true, y_prob, metric_fn, n_bootstrap: int = 1000, ci: float = 0.95, seed: int = 42):
+    """
+    Generic bootstrap confidence interval for any metric function with
+    signature metric_fn(y_true, y_prob) -> float. Resamples the test set
+    WITH REPLACEMENT n_bootstrap times, recomputes the metric each time,
+    and reports the percentile interval — the standard, practical way to
+    get a CI without needing repeated model training runs.
+
+    Returns (point_estimate, ci_low, ci_high). Bootstrap iterations where
+    the resample happens to contain only one class are silently skipped
+    (the metric is undefined there), not counted as errors.
+    """
+    y_true = np.asarray(y_true)
+    y_prob = np.asarray(y_prob)
+    n = len(y_true)
+
+    point_estimate = metric_fn(y_true, y_prob)
+
+    rng = np.random.default_rng(seed)
+    bootstrap_scores = []
+    for _ in range(n_bootstrap):
+        idx = rng.integers(0, n, size=n)
+        y_true_sample, y_prob_sample = y_true[idx], y_prob[idx]
+        if len(np.unique(y_true_sample)) < 2:
+            continue
+        try:
+            bootstrap_scores.append(metric_fn(y_true_sample, y_prob_sample))
+        except (ValueError, ZeroDivisionError):
+            continue
+
+    if len(bootstrap_scores) < 10:
+        return point_estimate, None, None  # too few valid resamples to trust a CI
+
+    alpha = (1 - ci) / 2
+    ci_low = float(np.percentile(bootstrap_scores, 100 * alpha))
+    ci_high = float(np.percentile(bootstrap_scores, 100 * (1 - alpha)))
+    return point_estimate, ci_low, ci_high
+
+
 if __name__ == "__main__":
     # --- Self-tests against hand-calculated / known-correct values ---
 

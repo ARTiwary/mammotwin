@@ -146,6 +146,9 @@ def main():
                          help="Override preprocessing.image_size for THIS script only.")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--config", type=str, default=None)
+    parser.add_argument("--no-augment", action="store_true")
+    parser.add_argument("--no-quality-filter", action="store_true")
+    parser.add_argument("--quality-report", type=str, default=None)
     args = parser.parse_args()
 
     config = load_config(args.config) if args.config else load_config()
@@ -181,9 +184,15 @@ def main():
         train_bbox_df = pd.read_csv(train_csv)
         val_bbox_df = pd.read_csv(val_csv)
 
-    train_dataset = LesionSegmentationDataset(train_bbox_df, config)
-    val_dataset = LesionSegmentationDataset(val_bbox_df, config)
-    print(f"Train: {len(train_dataset)} | Val: {len(val_dataset)}\n")
+        if not args.no_quality_filter:
+            from src.data.quality_filter import filter_by_quality
+            quality_report_path = args.quality_report or os.path.join(metadata_dir, "quality_report.csv")
+            train_bbox_df = filter_by_quality(train_bbox_df, quality_report_path)
+
+    train_dataset = LesionSegmentationDataset(train_bbox_df, config, augment=(not args.no_augment))
+    val_dataset = LesionSegmentationDataset(val_bbox_df, config, augment=False)  # NEVER augment val/test
+    print(f"Train: {len(train_dataset)} | Val: {len(val_dataset)} "
+          f"(augmentation: {'ON' if not args.no_augment else 'OFF'})\n")
 
     if len(train_dataset) < 2 or len(val_dataset) < 1:
         print("Too few images with usable masks. Check bbox_metadata CSVs, "
@@ -200,6 +209,7 @@ def main():
     model = build_segmentation_model(config).to(device)
     criterion = DiceBCELoss(bce_weight=bce_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=2)
 
     models_dir = config["paths"]["models_dir"]
     figures_dir = config["paths"]["figures_dir"]
@@ -213,6 +223,12 @@ def main():
     for epoch in range(1, args.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         val_metrics, _ = evaluate(model, val_loader, criterion, device, n_examples=0)
+
+        prev_lr = optimizer.param_groups[0]["lr"]
+        scheduler.step(val_metrics["loss"])
+        new_lr = optimizer.param_groups[0]["lr"]
+        if new_lr < prev_lr:
+            print(f"  -> Reducing learning rate: {prev_lr:.2e} -> {new_lr:.2e}")
 
         print(f"Epoch {epoch:3d}/{args.epochs} | train_loss: {train_loss:.4f} | "
               f"val_loss: {val_metrics['loss']:.4f} | val_dice: {val_metrics['dice']:.4f} | "

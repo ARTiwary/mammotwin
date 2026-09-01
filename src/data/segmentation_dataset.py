@@ -21,12 +21,14 @@ from torch.utils.data import Dataset
 
 from src.data.image_io import load_image
 from src.preprocessing.basic_preprocess import preprocess_image
+from src.preprocessing.augmentation import augment_pair
 
 
 class LesionSegmentationDataset(Dataset):
     def __init__(self, bbox_metadata_df, config,
                  path_col: str = "image_file_path_resolved",
-                 mask_col: str = "mask_path_used"):
+                 mask_col: str = "mask_path_used",
+                 augment: bool = False):
         df = bbox_metadata_df.copy()
         if "has_bbox" in df.columns:
             df = df[df["has_bbox"] == True]  # noqa: E712
@@ -35,6 +37,7 @@ class LesionSegmentationDataset(Dataset):
         self.config = config
         self.path_col = path_col
         self.mask_col = mask_col
+        self.augment = augment
 
     def __len__(self):
         return len(self.df)
@@ -54,6 +57,13 @@ class LesionSegmentationDataset(Dataset):
         mask_resized = cv2.resize(mask_cropped, (image_size[1], image_size[0]),
                                    interpolation=cv2.INTER_NEAREST)
         mask_binary = (mask_resized > 127).astype(np.float32)
+
+        # Both are already the same shape at this point (post crop+resize),
+        # so paired augmentation can apply directly — flip/rotation stays
+        # geometrically synchronized between image and mask.
+        if self.augment:
+            processed_img, mask_binary = augment_pair(processed_img, mask_binary, seed=None)
+            mask_binary = (mask_binary > 0.5).astype(np.float32)  # rotation interpolation can blur; re-binarize
 
         img_tensor = torch.from_numpy(np.ascontiguousarray(processed_img)).unsqueeze(0).float()
         mask_tensor = torch.from_numpy(np.ascontiguousarray(mask_binary)).unsqueeze(0).float()
