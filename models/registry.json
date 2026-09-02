@@ -49,5 +49,14 @@
     "val_pr_auc": 0.6647446470237135,
     "seed": 42,
     "phase": "9_lesion_crop"
+  },
+  "multimodal_resnet50_20260902_174117": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\multimodal_resnet50_20260902_174117.pt",
+    "backbone": "resnet50",
+    "trained_date": "2026-09-02T19:13:09",
+    "val_auc": 0.8295275025132846,
+    "val_pr_auc": 0.7831183737501177,
+    "seed": 42,
+    "phase": "13_multimodal"
   }
 }
