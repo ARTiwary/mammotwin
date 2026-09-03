@@ -97,7 +97,7 @@ def run_classifier_inference(model, loader, device, multimodal=False):
 
 def evaluate_classifier(name, checkpoint_path, test_df, config_override, device,
                          dataset_type: str, figures_dir: str, n_bootstrap: int,
-                         tabular_pp=None):
+                         tabular_pp=None, operating_threshold_info=None):
     print(f"\n{'=' * 70}\nEvaluating classifier: {name}\n{'=' * 70}")
     if checkpoint_path is None or not os.path.exists(checkpoint_path):
         print(f"  No checkpoint found for '{name}' — skipping.")
@@ -133,8 +133,30 @@ def evaluate_classifier(name, checkpoint_path, test_df, config_override, device,
 
     print(f"  Test set size: {len(y_true)}, checkpoint: {checkpoint_path}")
 
-    metrics = compute_classification_metrics(y_true, y_prob)
-    print("  " + format_metrics_report(metrics).replace("\n", "\n  "))
+    # Reference only — 0.5 is an arbitrary cutoff with no connection to the
+    # actual cost of a missed malignant case. Kept here purely so the
+    # improvement from proper threshold selection is visible, not hidden.
+    metrics_default = compute_classification_metrics(y_true, y_prob, threshold=0.5)
+    print("  --- Default 0.5 threshold (reference only) ---")
+    print("  " + format_metrics_report(metrics_default).replace("\n", "\n  "))
+
+    metrics = metrics_default
+    operating_threshold = 0.5
+    if operating_threshold_info is not None:
+        operating_threshold = operating_threshold_info["operating_threshold"]
+        metrics = compute_classification_metrics(y_true, y_prob, threshold=operating_threshold)
+        print(f"\n  --- Operating threshold {operating_threshold:.4f} "
+              f"(selected on VALIDATION set for target sensitivity "
+              f"{operating_threshold_info['target_sensitivity']:.0%}) ---")
+        print("  " + format_metrics_report(metrics).replace("\n", "\n  "))
+        if not operating_threshold_info.get("target_met_on_validation", True):
+            print("  NOTE: this model could not reach the target sensitivity even on the "
+                  "validation set — the gap below is a genuine model-quality limitation, "
+                  "not a thresholding artifact.")
+    else:
+        print("\n  No tuned operating threshold available for this model — run "
+              "scripts/select_operating_thresholds.py first. Reporting the 0.5 "
+              "reference metrics as the only numbers, clearly labeled as such.")
 
     auc_point, auc_lo, auc_hi = bootstrap_ci(y_true, y_prob, roc_auc_score, n_bootstrap=n_bootstrap)
     pr_point, pr_lo, pr_hi = bootstrap_ci(y_true, y_prob, average_precision_score, n_bootstrap=n_bootstrap)
@@ -149,7 +171,10 @@ def evaluate_classifier(name, checkpoint_path, test_df, config_override, device,
     print(f"  Saved calibration figure: {calib_path}")
 
     return {
-        "name": name, "n_test": len(y_true), "metrics": metrics,
+        "name": name, "n_test": len(y_true),
+        "metrics": metrics, "metrics_default_threshold": metrics_default,
+        "operating_threshold": operating_threshold,
+        "operating_threshold_info": operating_threshold_info,
         "roc_auc_ci": (auc_point, auc_lo, auc_hi), "pr_auc_ci": (pr_point, pr_lo, pr_hi),
         "brier_score": calib["brier_score"],
     }
@@ -345,13 +370,26 @@ def main():
     print(f"\nLoaded locked test set: {len(test_df)} rows, "
           f"{test_df['patient_id'].nunique()} patients.\n")
 
+    thresholds_path = os.path.join(metadata_dir, "operating_thresholds.json")
+    operating_thresholds = {}
+    if os.path.exists(thresholds_path):
+        with open(thresholds_path) as f:
+            operating_thresholds = json.load(f)
+        print(f"Loaded operating thresholds from {thresholds_path} "
+              f"(selected on validation data by select_operating_thresholds.py).\n")
+    else:
+        print(f"No {thresholds_path} found — classifiers below will be reported at the "
+              f"default 0.5 threshold ONLY. Run scripts/select_operating_thresholds.py "
+              f"first for a sensitivity-appropriate operating point.\n")
+
     results = {}
 
     # --- Classification: baseline, lesion-crop, multimodal ---
     baseline_ckpt = args.baseline_checkpoint or find_best_checkpoint("6_baseline", models_dir, fallback_prefix="baseline_")
     results["baseline"] = evaluate_classifier(
         "whole_image_baseline", baseline_ckpt, test_df, {}, device,
-        "whole_image", figures_dir, args.n_bootstrap)
+        "whole_image", figures_dir, args.n_bootstrap,
+        operating_threshold_info=operating_thresholds.get("whole_image_baseline"))
 
     bbox_test_df = None
     bbox_test_csv = os.path.join(metadata_dir, "bbox_metadata_test.csv")
@@ -384,7 +422,8 @@ def main():
         lesion_crop_ckpt = args.lesion_crop_checkpoint or find_best_checkpoint("9_lesion_crop", models_dir)
         results["lesion_crop"] = evaluate_classifier(
             "lesion_crop", lesion_crop_ckpt, bbox_test_df, {}, device,
-            "lesion_crop", figures_dir, args.n_bootstrap)
+            "lesion_crop", figures_dir, args.n_bootstrap,
+            operating_threshold_info=operating_thresholds.get("lesion_crop"))
 
     multimodal_ckpt = args.multimodal_checkpoint or find_best_checkpoint("13_multimodal", models_dir)
     if multimodal_ckpt and os.path.exists(multimodal_ckpt):
@@ -396,7 +435,8 @@ def main():
         tabular_pp = TabularPreprocessor(cat_cols, num_cols)
         results["multimodal"] = evaluate_classifier(
             "multimodal", multimodal_ckpt, test_df, {"train_df_for_refit": train_df_for_refit}, device,
-            "multimodal", figures_dir, args.n_bootstrap, tabular_pp=tabular_pp)
+            "multimodal", figures_dir, args.n_bootstrap, tabular_pp=tabular_pp,
+            operating_threshold_info=operating_thresholds.get("multimodal"))
 
     # --- Localization ---
     if not args.skip_localization and bbox_test_df is not None:
@@ -437,18 +477,36 @@ def main():
                 "prior to this evaluation.\n\n")
 
         f.write("## Classification\n\n")
-        f.write("| Model | ROC-AUC (95% CI) | PR-AUC (95% CI) | Balanced Acc. | Sensitivity | Specificity | Brier |\n")
-        f.write("|---|---|---|---|---|---|---|\n")
+        f.write("ROC-AUC/PR-AUC are threshold-independent (rank-based) and unaffected by the "
+                "cutoff below. Sensitivity/specificity/balanced accuracy ARE threshold-dependent "
+                "and are reported at TWO cutoffs so the effect of proper threshold selection is "
+                "visible rather than hidden: the untuned default (0.5) that earlier reports used, "
+                "and the operating threshold selected on the VALIDATION set only "
+                "(see `select_operating_thresholds.py`).\n\n")
+        f.write("| Model | ROC-AUC (95% CI) | PR-AUC (95% CI) | Brier "
+                "| Sens. @0.5 | Spec. @0.5 "
+                "| Operating thr. | Sens. @thr. | Spec. @thr. | Bal.Acc. @thr. | Thr. selected on |\n")
+        f.write("|---|---|---|---|---|---|---|---|---|---|---|\n")
         for key in ["baseline", "lesion_crop", "multimodal"]:
             r = results.get(key)
             if r is None:
                 continue
             auc_p, auc_lo, auc_hi = r["roc_auc_ci"]
             pr_p, pr_lo, pr_hi = r["pr_auc_ci"]
-            m = r["metrics"]
+            m_default = r["metrics_default_threshold"]
+            m_tuned = r["metrics"]
+            info = r["operating_threshold_info"]
+            if info is not None:
+                thr_str = f"{r['operating_threshold']:.3f}"
+                sel_str = (f"val (target {info['target_sensitivity']:.0%}"
+                           f"{', NOT MET' if not info.get('target_met_on_validation', True) else ''})")
+            else:
+                thr_str, sel_str = "0.500 (untuned)", "n/a — run select_operating_thresholds.py"
             f.write(f"| {r['name']} | {auc_p:.3f} [{auc_lo:.3f}, {auc_hi:.3f}] "
-                    f"| {pr_p:.3f} [{pr_lo:.3f}, {pr_hi:.3f}] | {m['balanced_accuracy']:.3f} "
-                    f"| {m['sensitivity']:.3f} | {m['specificity']:.3f} | {r['brier_score']:.3f} |\n")
+                    f"| {pr_p:.3f} [{pr_lo:.3f}, {pr_hi:.3f}] | {r['brier_score']:.3f} "
+                    f"| {m_default['sensitivity']:.3f} | {m_default['specificity']:.3f} "
+                    f"| {thr_str} | {m_tuned['sensitivity']:.3f} | {m_tuned['specificity']:.3f} "
+                    f"| {m_tuned['balanced_accuracy']:.3f} | {sel_str} |\n")
 
         if results.get("localization"):
             f.write("\n## Localization\n\n")

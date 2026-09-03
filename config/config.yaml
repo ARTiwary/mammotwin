@@ -34,6 +34,14 @@ training:
   num_epochs: 30
   num_workers: 4
   early_stopping_patience: 5
+  target_sensitivity: 0.90     # minimum acceptable sensitivity (recall on the
+                                # positive/malignant class) for the classification
+                                # operating threshold — chosen on the VALIDATION
+                                # set only, via scripts/select_operating_thresholds.py.
+                                # 0.5 (the previous implicit default) is NOT an
+                                # appropriate cutoff for an imbalanced, safety-
+                                # relevant task; missing a malignant case is far
+                                # costlier than one extra case sent to review.
 
 model:
   backbone: resnet50

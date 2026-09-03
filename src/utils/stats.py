@@ -258,6 +258,99 @@ def bootstrap_ci(y_true, y_prob, metric_fn, n_bootstrap: int = 1000, ci: float =
     return point_estimate, ci_low, ci_high
 
 
+# ---------------------------------------------------------------------------
+# Operating-threshold selection.
+#
+# Every classifier in this project was being scored with
+# compute_classification_metrics()'s default threshold=0.5, which is just
+# "whichever class the softmax favors" — it has no relationship to the
+# clinical cost of a false negative vs. a false positive, and on an
+# imbalanced dataset it silently favors the majority class. That is why
+# Phase 14 measured ~52-53% sensitivity: at threshold 0.5, the model was
+# missing roughly half of the malignant cases.
+#
+# The fix is NOT to retrain the model — the underlying probabilities may
+# already be reasonably ranked (that's what ROC-AUC measures). The fix is
+# to choose WHERE on that ranking "positive" starts, using the VALIDATION
+# set only, before ever touching the test set (see select_operating_thresholds.py).
+# ---------------------------------------------------------------------------
+
+def roc_points(y_true, y_prob):
+    """
+    Sensitivity (TPR) and specificity (TNR) at every distinct threshold
+    achievable from y_prob, plus the two fixed endpoints (flag nothing /
+    flag everything). Thresholds are returned in descending order.
+    """
+    y_true = np.asarray(y_true)
+    y_prob = np.asarray(y_prob, dtype=np.float64)
+    n_pos = int((y_true == 1).sum())
+    n_neg = int((y_true == 0).sum())
+    if n_pos == 0 or n_neg == 0:
+        raise ValueError("roc_points requires both classes present in y_true.")
+
+    distinct = np.unique(y_prob)
+    thresholds = np.concatenate([[distinct.max() + 1e-6], distinct, [distinct.min() - 1e-6]])
+    thresholds = np.unique(thresholds)[::-1]
+
+    tprs = np.empty(len(thresholds))
+    tnrs = np.empty(len(thresholds))
+    for i, t in enumerate(thresholds):
+        y_pred = (y_prob >= t).astype(int)
+        tp = int(((y_true == 1) & (y_pred == 1)).sum())
+        tn = int(((y_true == 0) & (y_pred == 0)).sum())
+        tprs[i] = tp / n_pos
+        tnrs[i] = tn / n_neg
+    return thresholds, tprs, tnrs
+
+
+def select_threshold_for_target_sensitivity(y_true, y_prob, target_sensitivity: float = 0.90) -> dict:
+    """
+    Picks the MOST SPECIFIC threshold that still achieves at least
+    target_sensitivity, evaluated on the data passed in. Call this with
+    VALIDATION data only — never the locked test set.
+
+    If target_sensitivity can't be reached even by flagging every case
+    positive (possible on a small/hard validation slice), returns the
+    threshold achieving the highest sensitivity available and marks
+    "target_met": False so callers don't silently trust an unreached goal.
+    """
+    thresholds, tprs, tnrs = roc_points(y_true, y_prob)
+    eligible = np.where(tprs >= target_sensitivity)[0]
+    if len(eligible) == 0:
+        best_idx = int(np.argmax(tprs))
+        return {
+            "threshold": float(thresholds[best_idx]),
+            "sensitivity": float(tprs[best_idx]),
+            "specificity": float(tnrs[best_idx]),
+            "target_sensitivity": target_sensitivity,
+            "target_met": False,
+        }
+    best_local = eligible[np.argmax(tnrs[eligible])]
+    return {
+        "threshold": float(thresholds[best_local]),
+        "sensitivity": float(tprs[best_local]),
+        "specificity": float(tnrs[best_local]),
+        "target_sensitivity": target_sensitivity,
+        "target_met": True,
+    }
+
+
+def youden_optimal_threshold(y_true, y_prob) -> dict:
+    """Threshold maximizing sensitivity + specificity - 1 (Youden's J) —
+    reported alongside the target-sensitivity threshold for context, not
+    used as the operating point itself (J ignores that a missed cancer
+    and an extra review are not equally costly)."""
+    thresholds, tprs, tnrs = roc_points(y_true, y_prob)
+    j = tprs + tnrs - 1
+    best_idx = int(np.argmax(j))
+    return {
+        "threshold": float(thresholds[best_idx]),
+        "sensitivity": float(tprs[best_idx]),
+        "specificity": float(tnrs[best_idx]),
+        "youden_j": float(j[best_idx]),
+    }
+
+
 if __name__ == "__main__":
     # --- Self-tests against hand-calculated / known-correct values ---
 
@@ -295,5 +388,27 @@ if __name__ == "__main__":
     bs = brier_score_loss(np.array([1, 0]), np.array([0.8, 0.3]))
     expected_bs = ((0.8 - 1) ** 2 + (0.3 - 0) ** 2) / 2
     assert abs(bs - expected_bs) < 1e-9
+
+    # Operating-threshold selection: hand-verifiable small example.
+    # 10 examples, probabilities perfectly separate the two classes except
+    # one hard negative (0.55) that outranks the weakest positive (0.50).
+    yt3 = np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    yp3 = np.array([0.05, 0.10, 0.20, 0.30, 0.55, 0.50, 0.60, 0.70, 0.85, 0.95])
+    thr, tprs, tnrs = roc_points(yt3, yp3)
+    assert abs(tprs.max() - 1.0) < 1e-9 and abs(tnrs.max() - 1.0) < 1e-9  # endpoints reach 1.0
+
+    # Target sensitivity 1.0 forces threshold <= 0.50 (must catch every positive,
+    # including the weakest-ranked one) -> the one hard negative at 0.55 is
+    # necessarily also flagged, so specificity can be at most 4/5.
+    sel = select_threshold_for_target_sensitivity(yt3, yp3, target_sensitivity=1.0)
+    assert sel["target_met"] is True
+    assert abs(sel["sensitivity"] - 1.0) < 1e-9
+    assert sel["threshold"] <= 0.50 + 1e-9
+    assert abs(sel["specificity"] - 0.8) < 1e-9  # 4/5 negatives correctly excluded
+
+    # An unreachable target (perfect separation is impossible here) falls
+    # back honestly rather than pretending to hit the target.
+    sel_impossible = select_threshold_for_target_sensitivity(yt3, yp3, target_sensitivity=1.01)
+    assert sel_impossible["target_met"] is False
 
     print("ALL STATS SELF-TESTS PASSED")
