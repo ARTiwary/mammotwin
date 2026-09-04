@@ -149,7 +149,11 @@ def main():
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=4,
+                         help="Was defaulting to 0 (fully serial data loading) regardless of "
+                              "config.yaml's num_workers:4 -- that mismatch was likely the "
+                              "biggest hidden cause of slow training. Set to 0 if you hit "
+                              "multiprocessing/pickling errors on Windows.")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--no-augment", action="store_true")
@@ -213,9 +217,9 @@ def main():
         return
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                               num_workers=args.num_workers, persistent_workers=(args.num_workers > 0))
+                               num_workers=args.num_workers, pin_memory=(device.type == "cuda"), persistent_workers=(args.num_workers > 0))
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                             num_workers=args.num_workers, persistent_workers=(args.num_workers > 0))
+                             num_workers=args.num_workers, pin_memory=(device.type == "cuda"), persistent_workers=(args.num_workers > 0))
 
     model = build_multimodal_model(config, tabular_input_dim=tabular_pp.output_dim).to(device)
     class_weights = compute_class_weights(train_dataset.class_counts(), config["model"]["num_classes"]).to(device)

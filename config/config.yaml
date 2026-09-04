@@ -28,7 +28,10 @@ quality_checks:
   min_breast_area_fraction: 0.03
 
 training:
-  batch_size: 16
+  batch_size: 32                # was 16. Larger batches use the GPU more efficiently and
+                                 # speed up training, at the cost of more GPU memory. If you
+                                 # hit a CUDA out-of-memory error, override per-run instead of
+                                 # editing this file: --batch-size 16 (or 8).
   learning_rate: 0.0001
   weight_decay: 0.00001
   num_epochs: 30
@@ -55,7 +58,10 @@ uncertainty:
 
 segmentation:
   base_filters: 32             # U-Net base channel count (doubles each level)
-  batch_size: 4
+  batch_size: 8                 # was 4. Segmentation feeds full-resolution image+mask pairs
+                                 # through a from-scratch U-Net, so it's more memory-hungry
+                                 # per-sample than the classifiers -- if you hit a CUDA
+                                 # out-of-memory error, override with --batch-size 4.
   learning_rate: 0.0001
   bce_weight: 0.3              # weight of BCE vs Dice in the combined loss
                                 # (lowered from 0.5 -- Dice handles the severe

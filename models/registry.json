@@ -58,5 +58,21 @@
     "val_pr_auc": 0.7831183737501177,
     "seed": 42,
     "phase": "13_multimodal"
+  },
+  "detector_fasterrcnn_20260904_113843": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\detector_fasterrcnn_20260904_113843.pt",
+    "trained_date": "2026-09-04T17:19:24",
+    "val_map": 0.044370918768698905,
+    "val_map_50": 0.11996498944962991,
+    "val_mean_top1_iou": 0.18093888007842374,
+    "seed": 42,
+    "phase": "7_localization"
+  },
+  "segmentation_unet_20260904_171931": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\segmentation_unet_20260904_171931.pt",
+    "trained_date": "2026-09-04T19:59:57",
+    "val_dice": 0.10894183180444904,
+    "seed": 42,
+    "phase": "8_segmentation"
   }
 }

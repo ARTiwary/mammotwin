@@ -128,7 +128,11 @@ def main():
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--limit", type=int, default=None,
                          help="Cap on training rows, for a quick smoke test on real data")
-    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=4,
+                         help="Was defaulting to 0 (fully serial data loading) regardless of "
+                              "config.yaml's num_workers:4 -- that mismatch was likely the "
+                              "biggest hidden cause of slow training. Set to 0 if you hit "
+                              "multiprocessing/pickling errors on Windows.")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--no-augment", action="store_true",
@@ -180,10 +184,10 @@ def main():
     print(f"Val:   {len(val_dataset)} images, class counts: {val_dataset.class_counts()}\n")
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                               num_workers=args.num_workers,
+                               num_workers=args.num_workers, pin_memory=(device.type == "cuda"),
                                persistent_workers=(args.num_workers > 0))
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                             num_workers=args.num_workers,
+                             num_workers=args.num_workers, pin_memory=(device.type == "cuda"),
                              persistent_workers=(args.num_workers > 0))
 
     # --- Model, loss, optimizer ---

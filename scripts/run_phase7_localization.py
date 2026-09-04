@@ -21,6 +21,7 @@ import os
 import sys
 import argparse
 import copy
+import json
 from datetime import datetime
 
 import numpy as np
@@ -147,9 +148,17 @@ def main():
     parser.add_argument("--train-bbox-csv", type=str, default=None)
     parser.add_argument("--val-bbox-csv", type=str, default=None)
     parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--batch-size", type=int, default=8,
+                         help="Was 4. The Faster R-CNN detector is more memory-hungry per "
+                              "sample than the classifiers (full-res images + region "
+                              "proposals), so raise this cautiously -- drop to 4 or 2 if "
+                              "you hit a CUDA out-of-memory error.")
     parser.add_argument("--lr", type=float, default=0.0001)
-    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=4,
+                         help="Was defaulting to 0 (fully serial data loading) regardless of "
+                              "config.yaml's num_workers:4 -- that mismatch was likely the "
+                              "biggest hidden cause of slow training. Set to 0 if you hit "
+                              "multiprocessing/pickling errors on Windows.")
     parser.add_argument("--image-size", type=int, default=None,
                          help="Override preprocessing.image_size (both dims) for THIS "
                               "script only — doesn't touch config.yaml or Phase 6's "
@@ -203,9 +212,9 @@ def main():
         return
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
-                               num_workers=args.num_workers, collate_fn=detection_collate_fn)
+                               num_workers=args.num_workers, pin_memory=(device.type == "cuda"), collate_fn=detection_collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False,
-                             num_workers=args.num_workers, collate_fn=detection_collate_fn)
+                             num_workers=args.num_workers, pin_memory=(device.type == "cuda"), collate_fn=detection_collate_fn)
 
     model = build_detector(config).to(device)
     optimizer = torch.optim.Adam(
@@ -232,6 +241,38 @@ def main():
     print("\n=== Detection Metrics (val set) ===")
     for k, v in map_results.items():
         print(f"  {k}: {v:.4f}")
+
+    # --- Update registry ---
+    # This was missing entirely: without a registry entry, Phase 14's
+    # find_best_checkpoint("7_localization", ...) can never find this
+    # checkpoint, no matter how many times a detector is trained here —
+    # it was silently falling through to "no detector checkpoint found"
+    # on every single run. Ranked by "val_map" since a detector has no
+    # AUC to rank by.
+    registry_path = os.path.join(models_dir, "registry.json")
+    registry = {}
+    if os.path.exists(registry_path) and os.path.getsize(registry_path) > 0:
+        try:
+            with open(registry_path) as f:
+                registry = json.load(f)
+        except json.JSONDecodeError:
+            registry = {}
+    registry[run_id] = {
+        "checkpoint_path": checkpoint_path,
+        "trained_date": datetime.now().isoformat(timespec="seconds"),
+        "val_map": map_results["map"], "val_map_50": map_results["map_50"],
+        "val_mean_top1_iou": map_results["mean_top1_iou"], "seed": seed,
+        "phase": "7_localization",
+    }
+    with open(registry_path, "w") as f:
+        json.dump(registry, f, indent=2)
+    print(f"Registered in {registry_path} as '{run_id}' (val_map={map_results['map']:.4f}).")
+
+    # NOTE: unlike Phase 8/9/13, this checkpoint is the FINAL epoch, not the
+    # best-val-mAP epoch (there is currently no in-loop best-checkpoint
+    # tracking for the detector). For a short run this rarely matters much,
+    # but if you increase --epochs meaningfully, add best-checkpoint
+    # tracking here the same way run_phase8_segmentation.py already does.
 
     fig_path = os.path.join(figures_dir, "phase7_predicted_boxes.png")
     save_prediction_figure(examples, fig_path)

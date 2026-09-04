@@ -48,9 +48,19 @@ from src.models.classifier import build_classifier
 from src.models.multimodal_model import build_multimodal_model
 
 
-def find_best_checkpoint(phase_name: str, models_dir: str, fallback_prefix: str = None):
+def find_best_checkpoint(phase_name: str, models_dir: str, fallback_prefix: str = None,
+                          metric_key: str = "val_auc"):
     """
     Auto-discover the best checkpoint for a given phase from registry.json.
+
+    metric_key: which registry field ranks candidates ("val_auc" for
+    classifiers, "val_map" for the detector, "val_dice" for segmentation).
+    Getting this wrong doesn't crash anything — matching[k].get(metric_key, -1)
+    silently returns -1 for every candidate, so max() picks whichever entry
+    happens to be first in the dict rather than the actual best one. That
+    failure mode is exactly what happened before this fix: the detector and
+    segmentation model were never even being ranked correctly because
+    nothing was written to the registry for them to rank in the first place.
 
     Falls back to matching by run_id PREFIX if no entry has a matching
     'phase' tag — Phase 6's baseline classifier script (an earlier script
@@ -72,7 +82,7 @@ def find_best_checkpoint(phase_name: str, models_dir: str, fallback_prefix: str 
 
     if not matching:
         return None
-    best_key = max(matching, key=lambda k: matching[k].get("val_auc", -1))
+    best_key = max(matching, key=lambda k: matching[k].get(metric_key, -1))
     return matching[best_key]["checkpoint_path"]
 
 
@@ -440,10 +450,10 @@ def main():
 
     # --- Localization ---
     if not args.skip_localization and bbox_test_df is not None:
-        detector_ckpt = args.detector_checkpoint or find_best_checkpoint("7_localization", models_dir)
+        detector_ckpt = args.detector_checkpoint or find_best_checkpoint("7_localization", models_dir, metric_key="val_map")
         if detector_ckpt is None:
-            # detector runs weren't logged with a 'phase' field in the registry by Phase 7's script;
-            # fall back to letting the user pass it explicitly.
+            # Fixed: Phase 7 now writes a registry entry (val_map-ranked), so this
+            # should only fire if no detector has been trained yet at all.
             print("\nNo detector checkpoint auto-found in registry — pass --detector-checkpoint explicitly to include it.")
         else:
             results["localization"] = evaluate_detector(detector_ckpt, bbox_test_df, device, figures_dir)
@@ -451,7 +461,21 @@ def main():
         results["localization"] = evaluate_detector(args.detector_checkpoint, bbox_test_df, device, figures_dir)
 
     # --- Segmentation ---
-    if not args.skip_segmentation and bbox_test_df is not None and args.segmentation_checkpoint:
+    # --- Segmentation ---
+    if not args.skip_segmentation and bbox_test_df is not None:
+        segmentation_ckpt = args.segmentation_checkpoint or find_best_checkpoint(
+            "8_segmentation", models_dir, metric_key="val_dice")
+        if segmentation_ckpt is None:
+            # Previously this branch required --segmentation-checkpoint to be passed
+            # explicitly and said NOTHING if it wasn't — segmentation just silently
+            # vanished from the report. Fixed: Phase 8 now writes a registry entry,
+            # this auto-discovers it the same way the detector does, and either way
+            # this prints so the omission is never silent.
+            print("\nNo segmentation checkpoint auto-found in registry — pass "
+                  "--segmentation-checkpoint explicitly to include it.")
+        else:
+            results["segmentation"] = evaluate_segmentation(segmentation_ckpt, bbox_test_df, device, figures_dir)
+    elif args.segmentation_checkpoint:
         results["segmentation"] = evaluate_segmentation(args.segmentation_checkpoint, bbox_test_df, device, figures_dir)
 
     # --- Explainability ---

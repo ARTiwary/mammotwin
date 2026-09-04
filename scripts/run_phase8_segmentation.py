@@ -20,6 +20,7 @@ import os
 import sys
 import argparse
 import copy
+import json
 from datetime import datetime
 
 import numpy as np
@@ -141,7 +142,11 @@ def main():
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=4,
+                         help="Was defaulting to 0 (fully serial data loading) regardless of "
+                              "config.yaml's num_workers:4 -- that mismatch was likely the "
+                              "biggest hidden cause of slow training. Set to 0 if you hit "
+                              "multiprocessing/pickling errors on Windows.")
     parser.add_argument("--image-size", type=int, default=None,
                          help="Override preprocessing.image_size for THIS script only.")
     parser.add_argument("--demo", action="store_true")
@@ -200,10 +205,10 @@ def main():
         return
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                               num_workers=args.num_workers,
+                               num_workers=args.num_workers, pin_memory=(device.type == "cuda"),
                                persistent_workers=(args.num_workers > 0))
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                             num_workers=args.num_workers,
+                             num_workers=args.num_workers, pin_memory=(device.type == "cuda"),
                              persistent_workers=(args.num_workers > 0))
 
     model = build_segmentation_model(config).to(device)
@@ -240,6 +245,31 @@ def main():
                         "epoch": epoch, "val_dice": val_metrics["dice"]}, checkpoint_path)
 
     print(f"\nBest val Dice: {best_val_dice:.4f} (checkpoint saved: {checkpoint_path})")
+
+    # --- Update registry ---
+    # This was missing entirely: without a registry entry, Phase 14's
+    # find_best_checkpoint("8_segmentation", ...) could never find this
+    # checkpoint. It was silently disappearing from the final report with
+    # no message whatsoever unless --segmentation-checkpoint was passed
+    # by hand. Ranked by "val_dice" (the same metric used for best-epoch
+    # selection above).
+    registry_path = os.path.join(models_dir, "registry.json")
+    registry = {}
+    if os.path.exists(registry_path) and os.path.getsize(registry_path) > 0:
+        try:
+            with open(registry_path) as f:
+                registry = json.load(f)
+        except json.JSONDecodeError:
+            registry = {}
+    registry[run_id] = {
+        "checkpoint_path": checkpoint_path,
+        "trained_date": datetime.now().isoformat(timespec="seconds"),
+        "val_dice": best_val_dice, "seed": seed,
+        "phase": "8_segmentation",
+    }
+    with open(registry_path, "w") as f:
+        json.dump(registry, f, indent=2)
+    print(f"Registered in {registry_path} as '{run_id}' (val_dice={best_val_dice:.4f}).")
 
     print("\nFinal evaluation with example visualizations...")
     final_metrics, examples = evaluate(model, val_loader, criterion, device, n_examples=4)
