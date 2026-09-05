@@ -57,7 +57,7 @@ uncertainty:
   review_threshold: 0.6        # predictions below this confidence get flagged
 
 segmentation:
-  base_filters: 32             # U-Net base channel count (doubles each level)
+  base_filters: 64            # U-Net base channel count (doubles each level)
   batch_size: 8                 # was 4. Segmentation feeds full-resolution image+mask pairs
                                  # through a from-scratch U-Net, so it's more memory-hungry
                                  # per-sample than the classifiers -- if you hit a CUDA
