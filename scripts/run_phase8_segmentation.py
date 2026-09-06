@@ -154,6 +154,17 @@ def main():
     parser.add_argument("--no-augment", action="store_true")
     parser.add_argument("--no-quality-filter", action="store_true")
     parser.add_argument("--quality-report", type=str, default=None)
+    parser.add_argument("--patch-size", type=int, default=None,
+                         help="Crop a patch_size x patch_size window around each lesion "
+                              "instead of training on the whole mammogram. Recommended if "
+                              "predicted masks come out diffuse/spread across dense tissue "
+                              "rather than tight on the lesion (try 256). Leave unset for "
+                              "the original whole-image behavior.")
+    parser.add_argument("--max-pos-weight", type=float, default=100.0,
+                         help="Caps how strongly the loss penalizes missing lesion pixels "
+                              "vs. false positives. The default (100) is aggressive and can "
+                              "encourage overly broad/diffuse predictions; try 20-30 if "
+                              "predictions look like they're bleeding into normal tissue.")
     args = parser.parse_args()
 
     config = load_config(args.config) if args.config else load_config()
@@ -194,8 +205,10 @@ def main():
             quality_report_path = args.quality_report or os.path.join(metadata_dir, "quality_report.csv")
             train_bbox_df = filter_by_quality(train_bbox_df, quality_report_path)
 
-    train_dataset = LesionSegmentationDataset(train_bbox_df, config, augment=(not args.no_augment))
-    val_dataset = LesionSegmentationDataset(val_bbox_df, config, augment=False)  # NEVER augment val/test
+    train_dataset = LesionSegmentationDataset(train_bbox_df, config, augment=(not args.no_augment),
+                                               patch_size=args.patch_size)
+    val_dataset = LesionSegmentationDataset(val_bbox_df, config, augment=False,
+                                             patch_size=args.patch_size)  # NEVER augment val/test
     print(f"Train: {len(train_dataset)} | Val: {len(val_dataset)} "
           f"(augmentation: {'ON' if not args.no_augment else 'OFF'})\n")
 
@@ -212,7 +225,7 @@ def main():
                              persistent_workers=(args.num_workers > 0))
 
     model = build_segmentation_model(config).to(device)
-    criterion = DiceBCELoss(bce_weight=bce_weight)
+    criterion = DiceBCELoss(bce_weight=bce_weight, max_pos_weight=args.max_pos_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=2)
 
@@ -242,7 +255,8 @@ def main():
         if val_metrics["dice"] > best_val_dice:
             best_val_dice = val_metrics["dice"]
             torch.save({"model_state_dict": model.state_dict(), "config": config,
-                        "epoch": epoch, "val_dice": val_metrics["dice"]}, checkpoint_path)
+                        "epoch": epoch, "val_dice": val_metrics["dice"],
+                        "patch_size": args.patch_size}, checkpoint_path)
 
     print(f"\nBest val Dice: {best_val_dice:.4f} (checkpoint saved: {checkpoint_path})")
 
@@ -265,6 +279,7 @@ def main():
         "checkpoint_path": checkpoint_path,
         "trained_date": datetime.now().isoformat(timespec="seconds"),
         "val_dice": best_val_dice, "seed": seed,
+        "patch_size": args.patch_size,
         "phase": "8_segmentation",
     }
     with open(registry_path, "w") as f:

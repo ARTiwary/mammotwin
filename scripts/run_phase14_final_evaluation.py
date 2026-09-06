@@ -244,7 +244,7 @@ def evaluate_segmentation(checkpoint_path, bbox_test_df, device, figures_dir):
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    dataset = LesionSegmentationDataset(bbox_test_df, config)
+    dataset = LesionSegmentationDataset(bbox_test_df, config, patch_size=checkpoint.get("patch_size"))
     if len(dataset) == 0:
         print("  No usable test images with masks — skipping.")
         return None
