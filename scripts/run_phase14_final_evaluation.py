@@ -265,8 +265,31 @@ def evaluate_segmentation(checkpoint_path, bbox_test_df, device, figures_dir):
     return {"dice": float(np.mean(all_dice)), "iou": float(np.mean(all_iou))}
 
 
-def evaluate_explainability(checkpoint_path, test_df, bbox_lookup, device, figures_dir, n_examples=6):
-    print(f"\n{'=' * 70}\nEvaluating EXPLAINABILITY (qualitative) on TEST set\n{'=' * 70}")
+def evaluate_explainability(checkpoint_path, test_df, bbox_lookup, device, figures_dir,
+                             n_examples=6, n_overlap_samples=200, malignant_class_idx=1):
+    """
+    Two separate things happen here, deliberately kept apart:
+
+    1. A small QUALITATIVE figure (n_examples images) for visual inspection
+       in the report.
+    2. A QUANTITATIVE overlap statistic, computed over a much larger sample
+       (n_overlap_samples) with a bootstrap CI -- the previous version
+       computed this from the SAME 6 images used for the figure, which
+       is nowhere near enough to support a specific-looking percentage
+       (its true 95% CI turns out to span roughly 6%-28%, not a tight
+       number around 14%).
+
+    Also fixed: Grad-CAM is now always generated for the MALIGNANT class
+    score specifically (target_class=malignant_class_idx), not the
+    model's own top prediction. Previously, on any test image the model
+    predicted "benign" for, the heatmap explained evidence FOR benign --
+    which has no reason to land on the lesion at all, and dragging those
+    heatmaps into an aggregate "does the heatmap find the lesion" score
+    was comparing two different questions. Always asking "where does the
+    model see evidence of malignancy" is the well-defined, consistent
+    question this metric is actually meant to answer.
+    """
+    print(f"\n{'=' * 70}\nEvaluating EXPLAINABILITY on TEST set\n{'=' * 70}")
     if checkpoint_path is None or not os.path.exists(checkpoint_path):
         print("  No classifier checkpoint found — skipping.")
         return None
@@ -283,15 +306,9 @@ def evaluate_explainability(checkpoint_path, test_df, bbox_lookup, device, figur
     model.eval()
 
     gradcam = GradCAM(model, backbone_name=config["model"]["backbone"])
-    sample = test_df.dropna(subset=["image_file_path_resolved", "pathology_binary"]).sample(
-        n=min(n_examples, len(test_df)), random_state=config["project"]["seed"])
 
-    overlap_scores = []
-    fig, axes = plt.subplots(1, len(sample), figsize=(4 * len(sample), 4))
-    if len(sample) == 1:
-        axes = [axes]
-
-    for i, (_, row) in enumerate(sample.iterrows()):
+    def compute_heatmap_and_overlap(row):
+        """Returns (overlay_rgb, pred_class, prob, gt_box_or_None, overlap_or_None)."""
         img = load_image(row["image_file_path_resolved"])
         result = preprocess_image(img, config, run_quality_gate=False)
         processed = result["processed"]
@@ -300,41 +317,72 @@ def evaluate_explainability(checkpoint_path, test_df, bbox_lookup, device, figur
 
         tensor = torch.from_numpy(np.ascontiguousarray(processed)).unsqueeze(0)
         tensor = tensor.repeat(3, 1, 1).float().unsqueeze(0).to(device)
-        heatmap, pred_class, prob = gradcam.generate(tensor)
-        overlay = overlay_heatmap(processed, heatmap)
+        # Always explain the malignant-class score, regardless of the
+        # model's own top prediction (see docstring above).
+        heatmap, pred_class, _ = gradcam.generate(tensor, target_class=None)
+        _, _, malignant_prob = gradcam.generate(tensor, target_class=malignant_class_idx)
 
-        axes[i].imshow(overlay)
-        gt_box = None
+        gt_box, overlap_frac = None, None
         image_id = row.get("image_id")
         if bbox_lookup is not None and image_id in bbox_lookup:
             b = bbox_lookup[image_id]
             gt_box = transform_bbox_for_preprocessing(
                 (b["bbox_x"], b["bbox_y"], b["bbox_w"], b["bbox_h"]), crop_bbox, image_size)
             x, y, w, h = gt_box
-            axes[i].add_patch(patches.Rectangle((x, y), w, h, linewidth=2, edgecolor="lime", facecolor="none"))
-
-            # Simple quantitative overlap: fraction of the GT box area where
-            # the heatmap is "hot" (top 25% of its own range).
             hot_mask = heatmap > (0.75 * heatmap.max()) if heatmap.max() > 0 else np.zeros_like(heatmap)
-            gx0, gy0, gw, gh = int(max(x, 0)), int(max(y, 0)), int(w), int(h)
-            gx1, gy1 = min(gx0 + gw, hot_mask.shape[1]), min(gy0 + gh, hot_mask.shape[0])
+            gx0, gy0 = int(max(x, 0)), int(max(y, 0))
+            gx1, gy1 = min(gx0 + int(w), hot_mask.shape[1]), min(gy0 + int(h), hot_mask.shape[0])
             if gx1 > gx0 and gy1 > gy0:
-                box_region = hot_mask[gy0:gy1, gx0:gx1]
-                overlap_frac = float(box_region.mean())
-                overlap_scores.append(overlap_frac)
+                overlap_frac = float(hot_mask[gy0:gy1, gx0:gx1].mean())
 
-        axes[i].set_title(f"Pred: {['benign','malignant'][pred_class]} ({prob:.2f})", fontsize=9)
+        return processed, heatmap, pred_class, malignant_prob, gt_box, overlap_frac
+
+    # --- Quantitative overlap: as large a sample as practical ---
+    eligible = test_df.dropna(subset=["image_file_path_resolved", "pathology_binary"])
+    eligible = eligible[eligible["image_id"].isin(bbox_lookup.keys())] if bbox_lookup else eligible.iloc[0:0]
+    overlap_sample = eligible.sample(n=min(n_overlap_samples, len(eligible)),
+                                      random_state=config["project"]["seed"])
+    overlap_scores = []
+    for _, row in overlap_sample.iterrows():
+        _, _, _, _, _, overlap_frac = compute_heatmap_and_overlap(row)
+        if overlap_frac is not None:
+            overlap_scores.append(overlap_frac)
+
+    if overlap_scores:
+        pt, lo, hi = bootstrap_ci_mean(overlap_scores)
+        print(f"  Mean fraction of ground-truth lesion box covered by high-attention "
+              f"heatmap pixels (malignant-class Grad-CAM): {pt:.2%}  "
+              f"95% CI [{lo:.2%}, {hi:.2%}]  (n={len(overlap_scores)})")
+    else:
+        pt = lo = hi = None
+        print("  No test images with both a classifier prediction and a ground-truth "
+              "lesion box were available — cannot compute an overlap statistic.")
+
+    # --- Qualitative figure: small, separate sample, just for visual inspection ---
+    fig_sample = eligible.sample(n=min(n_examples, len(eligible)), random_state=config["project"]["seed"] + 1) \
+        if len(eligible) > 0 else test_df.dropna(subset=["image_file_path_resolved"]).sample(
+            n=min(n_examples, len(test_df)), random_state=config["project"]["seed"])
+    fig, axes = plt.subplots(1, len(fig_sample), figsize=(4 * len(fig_sample), 4))
+    if len(fig_sample) == 1:
+        axes = [axes]
+    for i, (_, row) in enumerate(fig_sample.iterrows()):
+        processed, heatmap, pred_class, malignant_prob, gt_box, _ = compute_heatmap_and_overlap(row)
+        overlay = overlay_heatmap(processed, heatmap)
+        axes[i].imshow(overlay)
+        if gt_box is not None:
+            x, y, w, h = gt_box
+            axes[i].add_patch(patches.Rectangle((x, y), w, h, linewidth=2, edgecolor="lime", facecolor="none"))
+        axes[i].set_title(f"Pred: {['benign','malignant'][pred_class]}\n"
+                           f"P(malignant)={malignant_prob:.2f}", fontsize=9)
         axes[i].axis("off")
-
     plt.tight_layout()
     fig_path = os.path.join(figures_dir, "phase14_explainability_test_examples.png")
     plt.savefig(fig_path, dpi=150)
+    plt.close(fig)
     print(f"  Saved qualitative figure: {fig_path}")
-    if overlap_scores:
-        print(f"  Mean fraction of ground-truth lesion box covered by high-attention "
-              f"heatmap pixels: {np.mean(overlap_scores):.2%} (n={len(overlap_scores)})")
     print("  REMINDER: Grad-CAM overlays are a model explanation, not proof of correctness.")
-    return {"overlap_scores": overlap_scores, "figure_path": fig_path}
+
+    return {"overlap_scores": overlap_scores, "overlap_ci": (pt, lo, hi), "figure_path": fig_path}
 
 
 def main():

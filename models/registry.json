@@ -66,5 +66,13 @@
     "seed": 42,
     "patch_size": 256,
     "phase": "8_segmentation"
+  },
+  "segmentation_unet_20260910_214314": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\segmentation_unet_20260910_214314.pt",
+    "trained_date": "2026-09-11T01:20:06",
+    "val_dice": 0.15607669086678533,
+    "seed": 42,
+    "patch_size": 256,
+    "phase": "8_segmentation"
   }
 }
