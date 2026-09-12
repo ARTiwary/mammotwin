@@ -351,6 +351,28 @@ def youden_optimal_threshold(y_true, y_prob) -> dict:
     }
 
 
+def bootstrap_ci_mean(values, n_bootstrap: int = 1000, ci: float = 0.95, seed: int = 42):
+    """
+    Bootstrap CI for the plain mean of a 1-D array of scores (e.g. Grad-CAM
+    overlap fractions) -- bootstrap_ci() above is specialized for
+    (y_true, y_prob) classification metrics and isn't a fit here.
+    Returns (point_estimate, ci_low, ci_high).
+    """
+    values = np.asarray(values, dtype=np.float64)
+    n = len(values)
+    point_estimate = float(values.mean())
+    if n < 2:
+        return point_estimate, point_estimate, point_estimate
+    rng = np.random.default_rng(seed)
+    boot_means = np.empty(n_bootstrap)
+    for i in range(n_bootstrap):
+        idx = rng.integers(0, n, size=n)
+        boot_means[i] = values[idx].mean()
+    alpha = (1 - ci) / 2
+    lo, hi = np.percentile(boot_means, [100 * alpha, 100 * (1 - alpha)])
+    return point_estimate, float(lo), float(hi)
+
+
 if __name__ == "__main__":
     # --- Self-tests against hand-calculated / known-correct values ---
 

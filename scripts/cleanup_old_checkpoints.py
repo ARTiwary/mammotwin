@@ -1,113 +1,73 @@
 """
-Identifies which checkpoint in models/ is the actual "keeper" for each
-model type, and lists everything else as safe to delete — freeing disk
-space from superseded training runs.
+Deletes old/invalid segmentation and detector checkpoints, keeping only
+the ones you specify, and removes their corresponding entries from
+models/registry.json so future auto-discovery (find_best_checkpoint)
+can't accidentally pick a stale or invalid run again.
 
-Keeper logic:
-  - Classifiers (baseline, lesion_crop, multimodal): the checkpoint with
-    the HIGHEST val_auc logged in registry.json for that phase.
-  - Detector / segmentation: registry.json doesn't log these (their
-    scripts never write to it), so the MOST RECENT (by filename timestamp)
-    checkpoint is kept as a reasonable default — override with
-    --keep-detector / --keep-segmentation if you know a specific one
-    performed better.
-
-SAFE BY DEFAULT: only prints what it WOULD delete. Nothing is actually
-removed unless you pass --confirm-delete.
+Review the KEEP_FILES list below before running -- this permanently
+deletes files.
 
 Usage:
-    python scripts/cleanup_old_checkpoints.py
-    python scripts/cleanup_old_checkpoints.py --confirm-delete
+    python cleanup_old_checkpoints.py            # dry run, lists what WOULD be deleted
+    python cleanup_old_checkpoints.py --confirm  # actually deletes
 """
-
 import os
 import sys
-import re
 import json
-import argparse
+import glob
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from src.utils.config import load_config
+MODELS_DIR = "models"
+REGISTRY_PATH = os.path.join(MODELS_DIR, "registry.json")
+
+# Checkpoints to KEEP (everything else matching these prefixes gets removed).
+KEEP_FILES = {
+    "segmentation_unet_20260910_214314.pt",  # full-dataset, patch-256, max-pos-weight-30 run
+    "detector_fasterrcnn_20260904_113843.pt",  # the only correctly-registered detector run
+}
+
+# Only prune files matching these prefixes -- never touches baseline/lesion_crop/multimodal.
+PRUNE_PREFIXES = ("segmentation_unet_", "detector_fasterrcnn_")
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--confirm-delete", action="store_true",
-                         help="Actually delete the files. Without this, only prints the plan.")
-    parser.add_argument("--keep-detector", type=str, default=None,
-                         help="Explicit detector checkpoint filename to keep (default: most recent)")
-    parser.add_argument("--keep-segmentation", type=str, default=None,
-                         help="Explicit segmentation checkpoint filename to keep (default: most recent)")
-    args = parser.parse_args()
+    confirm = "--confirm" in sys.argv
 
-    config = load_config()
-    models_dir = config["paths"]["models_dir"]
-    registry_path = os.path.join(models_dir, "registry.json")
+    candidates = []
+    for prefix in PRUNE_PREFIXES:
+        candidates.extend(glob.glob(os.path.join(MODELS_DIR, f"{prefix}*.pt")))
 
-    registry = {}
-    if os.path.exists(registry_path) and os.path.getsize(registry_path) > 0:
-        with open(registry_path) as f:
+    to_delete = [p for p in candidates if os.path.basename(p) not in KEEP_FILES]
+
+    if not to_delete:
+        print("Nothing to delete -- all matching checkpoints are in KEEP_FILES.")
+        return
+
+    print("The following files will be deleted:" if confirm else
+          "DRY RUN -- the following files WOULD be deleted (pass --confirm to actually delete):")
+    for p in to_delete:
+        print(f"  {p}")
+
+    if not confirm:
+        print("\nNo changes made. Re-run with --confirm to apply.")
+        return
+
+    for p in to_delete:
+        os.remove(p)
+    print(f"\nDeleted {len(to_delete)} file(s).")
+
+    # Clean matching entries out of registry.json so auto-discovery never
+    # points at a now-missing (or previously-invalid) checkpoint again.
+    if os.path.exists(REGISTRY_PATH):
+        with open(REGISTRY_PATH) as f:
             registry = json.load(f)
-
-    all_checkpoints = [f for f in os.listdir(models_dir) if f.endswith(".pt")]
-    if not all_checkpoints:
-        print("No checkpoints found in", models_dir)
-        return
-
-    keepers = set()
-
-    # --- Classifiers: best val_auc per phase, using registry + prefix fallback ---
-    phase_prefixes = {
-        "6_baseline": "baseline_",
-        "9_lesion_crop": "lesion_crop_",
-        "13_multimodal": "multimodal_",
-    }
-    for phase, prefix in phase_prefixes.items():
-        matching = {k: v for k, v in registry.items() if v.get("phase") == phase}
-        if not matching:
-            matching = {k: v for k, v in registry.items() if k.startswith(prefix)}
-        if matching:
-            best_key = max(matching, key=lambda k: matching[k].get("val_auc", -1))
-            checkpoint_path = matching[best_key]["checkpoint_path"]
-            keepers.add(os.path.basename(checkpoint_path))
-            print(f"Keeper for {phase}: {os.path.basename(checkpoint_path)} "
-                  f"(val_auc={matching[best_key].get('val_auc', '?')})")
-
-    # --- Detector / segmentation: most recent by filename timestamp, or explicit override ---
-    def most_recent(prefix):
-        candidates = sorted([f for f in all_checkpoints if f.startswith(prefix)])
-        return candidates[-1] if candidates else None  # timestamps sort lexicographically
-
-    detector_keeper = args.keep_detector or most_recent("detector_")
-    segmentation_keeper = args.keep_segmentation or most_recent("segmentation_")
-    if detector_keeper:
-        keepers.add(detector_keeper)
-        print(f"Keeper for detector: {detector_keeper} (most recent)")
-    if segmentation_keeper:
-        keepers.add(segmentation_keeper)
-        print(f"Keeper for segmentation: {segmentation_keeper} (most recent)")
-
-    to_delete = [f for f in all_checkpoints if f not in keepers]
-
-    print(f"\n{'=' * 60}")
-    print(f"KEEPING {len(keepers)} checkpoints, DELETING {len(to_delete)}:")
-    print(f"{'=' * 60}")
-    total_size_mb = 0
-    for f in sorted(to_delete):
-        path = os.path.join(models_dir, f)
-        size_mb = os.path.getsize(path) / (1024 * 1024)
-        total_size_mb += size_mb
-        print(f"  {f}  ({size_mb:.1f} MB)")
-
-    print(f"\nTotal space to free: {total_size_mb:.1f} MB")
-
-    if not args.confirm_delete:
-        print("\nDRY RUN — nothing deleted. Re-run with --confirm-delete to actually remove these files.")
-        return
-
-    for f in to_delete:
-        os.remove(os.path.join(models_dir, f))
-    print(f"\nDeleted {len(to_delete)} files, freed {total_size_mb:.1f} MB.")
+        deleted_paths = {os.path.normpath(p) for p in to_delete}
+        before = len(registry)
+        registry = {k: v for k, v in registry.items()
+                    if os.path.normpath(v.get("checkpoint_path", "")) not in deleted_paths}
+        removed = before - len(registry)
+        with open(REGISTRY_PATH, "w") as f:
+            json.dump(registry, f, indent=2)
+        print(f"Removed {removed} stale entr{'y' if removed == 1 else 'ies'} from {REGISTRY_PATH}.")
 
 
 if __name__ == "__main__":

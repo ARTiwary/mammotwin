@@ -38,7 +38,7 @@ from torch.utils.data import DataLoader
 
 from src.utils.config import load_config, set_global_seed, REPO_ROOT
 from src.utils.metrics import compute_classification_metrics, format_metrics_report
-from src.utils.stats import bootstrap_ci, roc_auc_score, average_precision_score
+from src.utils.stats import bootstrap_ci, bootstrap_ci_mean, roc_auc_score, average_precision_score
 from src.utils.calibration import plot_reliability_diagram
 from src.data.dataset import MammogramDataset
 from src.data.crop_dataset import LesionCropDataset
@@ -308,7 +308,13 @@ def evaluate_explainability(checkpoint_path, test_df, bbox_lookup, device, figur
     gradcam = GradCAM(model, backbone_name=config["model"]["backbone"])
 
     def compute_heatmap_and_overlap(row):
-        """Returns (overlay_rgb, pred_class, prob, gt_box_or_None, overlap_or_None)."""
+        """Returns (processed_img, heatmap, pred_class, malignant_prob, gt_box_or_None, overlap_or_None).
+
+        heatmap is ALWAYS the malignant-class Grad-CAM (see docstring above) --
+        pred_class is looked up separately (cheap forward pass, no backward)
+        purely for the figure's title label, and must never be the heatmap
+        actually used for overlay/overlap.
+        """
         img = load_image(row["image_file_path_resolved"])
         result = preprocess_image(img, config, run_quality_gate=False)
         processed = result["processed"]
@@ -317,10 +323,14 @@ def evaluate_explainability(checkpoint_path, test_df, bbox_lookup, device, figur
 
         tensor = torch.from_numpy(np.ascontiguousarray(processed)).unsqueeze(0)
         tensor = tensor.repeat(3, 1, 1).float().unsqueeze(0).to(device)
-        # Always explain the malignant-class score, regardless of the
-        # model's own top prediction (see docstring above).
-        heatmap, pred_class, _ = gradcam.generate(tensor, target_class=None)
-        _, _, malignant_prob = gradcam.generate(tensor, target_class=malignant_class_idx)
+
+        with torch.no_grad():
+            pred_class = int(model(tensor).argmax(dim=1).item())
+
+        # The one and only Grad-CAM pass used for both the overlay and the
+        # overlap statistic -- always explains "evidence for malignant",
+        # regardless of what the model actually predicted for this image.
+        heatmap, _, malignant_prob = gradcam.generate(tensor, target_class=malignant_class_idx)
 
         gt_box, overlap_frac = None, None
         image_id = row.get("image_id")
@@ -592,8 +602,15 @@ def main():
 
         if results.get("explainability") and results["explainability"]["overlap_scores"]:
             f.write("\n## Explainability (qualitative + overlap)\n\n")
+            pt, lo, hi = results["explainability"]["overlap_ci"]
+            n = len(results["explainability"]["overlap_scores"])
             f.write(f"Mean fraction of ground-truth lesion box covered by high-attention "
-                    f"heatmap pixels: {np.mean(results['explainability']['overlap_scores']):.2%}\n")
+                    f"malignant-class Grad-CAM pixels: {pt:.2%}  95% CI [{lo:.2%}, {hi:.2%}]  (n={n})\n\n")
+            f.write("Grad-CAM is generated for the malignant-class score specifically, "
+                    "regardless of the model's own top prediction on a given image, so this "
+                    "number consistently answers \"where does the model see evidence of "
+                    "malignancy\" rather than mixing that question with \"evidence for whatever "
+                    "this model happened to predict.\"\n")
             f.write(f"See figure: {results['explainability']['figure_path']}\n")
 
         f.write("\n## Robustness\n\n")
