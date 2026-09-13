@@ -1,0 +1,359 @@
+/*
+  MammoTwin dashboard — design system.
+
+  Concept: a radiology reading-room, not a SaaS dashboard. Image panels
+  are near-black (how mammograms are actually viewed, for correct local
+  contrast); everything else sits on a warm paper background. Teal is the
+  one structural accent; rust is reserved ONLY for "needs review" /
+  attention states, never decorative. The research disclaimer is treated
+  as a permanent structural band, not a buried footnote, because the
+  distinction (research tool vs. diagnosis) is load-bearing here, not a
+  legal footnote.
+*/
+
+:root {
+  --ink: #14181c;
+  --ink-raised: #1c2126;
+  --paper: #f5f3ee;
+  --surface: #ffffff;
+  --line: #dad5c9;
+  --line-strong: #b9b2a0;
+  --text: #1b1e1f;
+  --text-muted: #6b7280;
+  --teal: #1f6f6b;
+  --teal-dark: #164f4c;
+  --teal-tint: #e4efee;
+  --rust: #b8562e;
+  --rust-tint: #f7e9e2;
+  --green: #2f7d4f;
+
+  --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  --radius: 3px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- layout shell ---------- */
+
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.disclaimer-band {
+  background: var(--ink);
+  color: #d8dade;
+  padding: 8px 20px;
+  font-size: 12.5px;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+.disclaimer-band strong { color: #fff; }
+
+.app-header {
+  padding: 28px 32px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.app-header h1 {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 500;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+.app-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  max-width: 60ch;
+}
+
+.app-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 0;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .app-body { grid-template-columns: 1fr; }
+}
+
+/* ---------- left column: upload + pipeline tracker ---------- */
+
+.sidebar {
+  padding: 28px 24px;
+  border-right: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+}
+
+@media (max-width: 860px) {
+  .sidebar { position: static; border-right: none; border-bottom: 1px solid var(--line); }
+}
+
+.stage-tracker {
+  margin-top: 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-left: 2px solid var(--line);
+  padding-left: 16px;
+  position: relative;
+}
+
+.stage-item::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  border: 2px solid var(--paper);
+}
+
+.stage-item.done::before { background: var(--teal); }
+.stage-item.attention::before { background: var(--rust); }
+
+.stage-item .stage-label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.stage-item .stage-note {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* ---------- upload panel ---------- */
+
+.upload-dropzone {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 28px 18px;
+  text-align: center;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.dragging {
+  border-color: var(--teal);
+  background: var(--teal-tint);
+}
+
+.upload-dropzone input { display: none; }
+
+.upload-dropzone .upload-title {
+  font-weight: 600;
+  font-size: 14.5px;
+  margin-bottom: 4px;
+}
+
+.upload-dropzone .upload-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--teal);
+  background: var(--teal);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn:hover { background: var(--teal-dark); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn.secondary {
+  background: transparent;
+  color: var(--teal);
+}
+.btn.secondary:hover { background: var(--teal-tint); }
+
+/* ---------- main results column ---------- */
+
+.results-column {
+  padding: 28px 32px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.panel {
+  background: var(--surface);
+  border-top: 3px solid var(--line);
+  padding: 20px 22px;
+}
+
+.panel.attention { border-top-color: var(--rust); }
+.panel.ok { border-top-color: var(--teal); }
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-header h2 {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.panel-header .panel-meta {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.panel-empty {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  padding: 8px 0;
+}
+
+/* ---------- image viewers (dark, radiology-style) ---------- */
+
+.image-viewer {
+  background: var(--ink);
+  border-radius: var(--radius);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-viewer img {
+  max-width: 100%;
+  max-height: 420px;
+  display: block;
+}
+
+/* ---------- readouts (numeric data) ---------- */
+
+.readout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.readout {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.readout .readout-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.readout .readout-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.readout .readout-value.small { font-size: 16px; }
+
+/* ---------- badges/flags ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.badge.ok { background: var(--teal-tint); color: var(--teal-dark); }
+.badge.attention { background: var(--rust-tint); color: var(--rust); }
+.badge.neutral { background: #eee9dd; color: var(--text-muted); }
+
+.badge .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor;
+}
+
+.flag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ---------- misc text ---------- */
+
+.muted { color: var(--text-muted); font-size: 13px; }
+.error-text { color: var(--rust); font-size: 13.5px; }
+
+.disclaimer-line {
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 14px;
+}
+
+/* ---------- longitudinal comparison ---------- */
+
+.dual-upload {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 640px) {
+  .dual-upload { grid-template-columns: 1fr; }
+}
+
+.score-change-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 14px 0;
+  font-size: 15px;
+}
+
+.score-change-row .arrow { color: var(--text-muted); }

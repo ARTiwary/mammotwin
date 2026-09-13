@@ -30,6 +30,7 @@ torchvision
 fastapi
 uvicorn[standard]
 python-multipart
+httpx  # required by fastapi.testclient.TestClient (tests/test_api.py)
 
 # Dev / testing
 pytest

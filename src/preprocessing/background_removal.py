@@ -89,6 +89,23 @@ def remove_background(img: np.ndarray, padding: int = 10, max_detection_dim: int
 
     cropped = img[y0:y1, x0:x1].copy()
 
+    # FIX: this step was documented above (and in this function's own
+    # docstring) but never actually implemented -- cropping to the
+    # bounding RECTANGLE of the breast component is not the same as
+    # keeping only the breast component. A burned-in laterality/view
+    # marker (e.g. "R CC") sitting inside that rectangle, but outside the
+    # breast tissue itself, was passing straight through into every
+    # downstream model untouched. This is the leading suspected cause of
+    # the shortcut-learning finding in docs/RESULTS_AND_LIMITATIONS.md
+    # (Grad-CAM attention landing on marker text in ~1/6 qualitative
+    # examples). Zero out every pixel in the crop that isn't part of the
+    # breast's own connected component, at full resolution.
+    component_mask_small = (labels == largest_label).astype(np.uint8) * 255
+    component_mask_full = cv2.resize(component_mask_small, (original_w, original_h),
+                                      interpolation=cv2.INTER_NEAREST)
+    mask_cropped = component_mask_full[y0:y1, x0:x1] > 0
+    cropped[~mask_cropped] = 0
+
     # breast_area_fraction is scale-invariant (both areas scale by the same
     # factor²), so it can be computed directly from the downsampled stats.
     breast_area_fraction = float(breast_area_small) / (small_img.shape[0] * small_img.shape[1])
@@ -101,9 +118,17 @@ def remove_background(img: np.ndarray, padding: int = 10, max_detection_dim: int
 
 
 def _to_uint8(img: np.ndarray) -> np.ndarray:
-    """Otsu thresholding (cv2.threshold) requires uint8 input."""
+    """Otsu thresholding (cv2.threshold) requires uint8 input.
+
+    NaN/inf pixels (possible from a corrupt or partially-decoded upload)
+    would otherwise propagate through min()/max() and silently produce
+    garbage output on cast to uint8 -- replaced with 0 here so a corrupt
+    image degrades to "mostly black" (caught by the quality gate) rather
+    than producing an undefined/garbage cast.
+    """
     if img.dtype == np.uint8:
         return img
+    img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
     img_min, img_max = img.min(), img.max()
     denom = (img_max - img_min) if (img_max - img_min) > 1e-6 else 1.0
     scaled = (img - img_min) / denom * 255.0
