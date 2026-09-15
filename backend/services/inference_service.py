@@ -80,8 +80,20 @@ def _best_entry(registry: dict, phase_name: str = None, fallback_prefix: str = N
         matching = {k: v for k, v in registry.items() if k.startswith(fallback_prefix)}
     if not matching:
         return None
-    best_key = max(matching, key=lambda k: matching[k].get(metric_key, -1))
-    return matching[best_key]
+
+    # Try candidates in descending metric order, skipping any whose
+    # checkpoint file no longer exists on disk (e.g. deleted during
+    # cleanup) instead of crashing on the first, best-scoring one --
+    # this is a real failure mode: a checkpoint's registry entry can
+    # outlive the file itself.
+    for key in sorted(matching, key=lambda k: matching[k].get(metric_key, -1), reverse=True):
+        entry = matching[key]
+        if os.path.exists(entry.get("checkpoint_path", "")):
+            return entry
+        print(f"[MammoTwinService] WARNING: registry entry '{key}' points to a missing file "
+              f"({entry.get('checkpoint_path')}) -- skipping it and trying the next-best candidate. "
+              f"Consider removing stale entries from registry.json.")
+    return None
 
 
 class MammoTwinService:

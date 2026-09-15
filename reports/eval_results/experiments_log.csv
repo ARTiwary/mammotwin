@@ -6,6 +6,3 @@ multimodal_resnet50_20260829_090600,2026-08-29T10:49:47,13_multimodal,resnet50,t
 baseline_resnet50_20260831_193348,2026-08-31T22:02:15,6_baseline,resnet50,train/val,42,"epochs=30,batch_size=16,lr=0.0001",0.8184,0.7628,,,
 lesion_crop_resnet50_20260831_220226,2026-08-31T22:36:37,9_lesion_crop,resnet50,train/val,42,"epochs=30,batch_size=16,lr=0.0001,crop_padding=0.2",0.7311,0.6647,,,
 multimodal_resnet50_20260902_174117,2026-09-02T19:13:09,13_multimodal,resnet50,train/val,42,"epochs=30,batch_size=32,lr=0.0001",0.8295,0.7831,,,
-baseline_resnet50_20260913_175719,2026-09-13T19:19:27,6_baseline,resnet50,train/val,42,"epochs=30,batch_size=32,lr=0.0001",0.7554,0.6914,,,
-lesion_crop_resnet50_20260913_191937,2026-09-13T19:25:27,9_lesion_crop,resnet50,train/val,42,"epochs=30,batch_size=32,lr=0.0001,crop_padding=0.2",0.7443,0.6412,,,
-multimodal_resnet50_20260913_192536,2026-09-13T21:33:30,13_multimodal,resnet50,train/val,42,"epochs=30,batch_size=32,lr=0.0001",0.8427,0.7882,,,

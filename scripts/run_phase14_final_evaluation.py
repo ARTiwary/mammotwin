@@ -82,8 +82,17 @@ def find_best_checkpoint(phase_name: str, models_dir: str, fallback_prefix: str 
 
     if not matching:
         return None
-    best_key = max(matching, key=lambda k: matching[k].get(metric_key, -1))
-    return matching[best_key]["checkpoint_path"]
+
+    # Skip any candidate whose checkpoint file no longer exists on disk
+    # (e.g. deleted during cleanup) instead of crashing on the highest-
+    # scoring one -- try the next-best candidate and warn.
+    for key in sorted(matching, key=lambda k: matching[k].get(metric_key, -1), reverse=True):
+        checkpoint_path = matching[key]["checkpoint_path"]
+        if os.path.exists(checkpoint_path):
+            return checkpoint_path
+        print(f"WARNING: registry entry '{key}' points to a missing file ({checkpoint_path}) -- "
+              f"skipping it and trying the next-best candidate.")
+    return None
 
 
 @torch.no_grad()

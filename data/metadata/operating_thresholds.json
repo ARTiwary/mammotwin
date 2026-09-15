@@ -9,33 +9,33 @@
     "n_validation_examples": 541,
     "selected_on": "validation_split_only",
     "figure": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\reports/figures\\threshold_selection_whole_image_baseline.png",
-    "selected_at": "2026-09-13T21:35:50",
+    "selected_at": "2026-09-14T22:14:38",
     "checkpoint": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\baseline_resnet50_20260831_193348.pt"
   },
   "lesion_crop": {
-    "operating_threshold": 0.1599276065826416,
+    "operating_threshold": 0.04756138473749161,
     "val_sensitivity_at_threshold": 0.9043062200956937,
-    "val_specificity_at_threshold": 0.3375,
+    "val_specificity_at_threshold": 0.259375,
     "target_sensitivity": 0.9,
     "target_met_on_validation": true,
-    "youden_reference_threshold": 0.4252080023288727,
+    "youden_reference_threshold": 0.736171305179596,
     "n_validation_examples": 529,
     "selected_on": "validation_split_only",
     "figure": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\reports/figures\\threshold_selection_lesion_crop.png",
-    "selected_at": "2026-09-13T21:36:23",
-    "checkpoint": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\lesion_crop_resnet50_20260913_191937.pt"
+    "selected_at": "2026-09-14T22:15:36",
+    "checkpoint": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\lesion_crop_resnet50_20260831_220226.pt"
   },
   "multimodal": {
-    "operating_threshold": 0.18053115904331207,
+    "operating_threshold": 0.15005497634410858,
     "val_sensitivity_at_threshold": 0.9004739336492891,
-    "val_specificity_at_threshold": 0.5515151515151515,
+    "val_specificity_at_threshold": 0.31212121212121213,
     "target_sensitivity": 0.9,
     "target_met_on_validation": true,
-    "youden_reference_threshold": 0.44029587507247925,
+    "youden_reference_threshold": 0.18326658010482788,
     "n_validation_examples": 541,
     "selected_on": "validation_split_only",
     "figure": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\reports/figures\\threshold_selection_multimodal.png",
-    "selected_at": "2026-09-13T21:38:34",
-    "checkpoint": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\multimodal_resnet50_20260913_192536.pt"
+    "selected_at": "2026-09-14T22:20:57",
+    "checkpoint": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\multimodal_resnet50_20260902_174117.pt"
   }
 }

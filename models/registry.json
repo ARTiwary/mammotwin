@@ -59,30 +59,21 @@
     "seed": 42,
     "phase": "13_multimodal"
   },
-  "baseline_resnet50_20260913_175719": {
-    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\baseline_resnet50_20260913_175719.pt",
-    "backbone": "resnet50",
-    "trained_date": "2026-09-13T19:19:27",
-    "val_auc": 0.7553999712767485,
-    "val_pr_auc": 0.691399856579064,
-    "seed": 42
-  },
-  "lesion_crop_resnet50_20260913_191937": {
-    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\lesion_crop_resnet50_20260913_191937.pt",
-    "backbone": "resnet50",
-    "trained_date": "2026-09-13T19:25:27",
-    "val_auc": 0.744348086124402,
-    "val_pr_auc": 0.6411966084115606,
+  "detector_fasterrcnn_20260914_162708": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\detector_fasterrcnn_20260914_162708.pt",
+    "trained_date": "2026-09-14T17:54:26",
+    "val_map": 0.04224573690813792,
+    "val_map_50": 0.10874456753103993,
+    "val_mean_top1_iou": 0.18892197943160333,
     "seed": 42,
-    "phase": "9_lesion_crop"
+    "phase": "7_localization"
   },
-  "multimodal_resnet50_20260913_192536": {
-    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\multimodal_resnet50_20260913_192536.pt",
-    "backbone": "resnet50",
-    "trained_date": "2026-09-13T21:33:30",
-    "val_auc": 0.8426827516874911,
-    "val_pr_auc": 0.7882257413459026,
+  "segmentation_unet_20260914_175433": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\segmentation_unet_20260914_175433.pt",
+    "trained_date": "2026-09-14T19:28:57",
+    "val_dice": 0.17453951265767473,
     "seed": 42,
-    "phase": "13_multimodal"
+    "patch_size": 256,
+    "phase": "8_segmentation"
   }
 }
