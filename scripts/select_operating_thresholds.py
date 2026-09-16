@@ -162,6 +162,9 @@ def main():
     val_df = pd.read_csv(val_csv)
 
     out = {}
+    baseline_val_probs = None   # kept for the ensemble step below
+    multimodal_val_probs = None
+    baseline_val_true = None
 
     # --- Whole-image baseline ---
     baseline_ckpt = args.baseline_checkpoint or find_best_checkpoint(
@@ -172,6 +175,7 @@ def main():
         model.load_state_dict(checkpoint["model_state_dict"])
         loader = DataLoader(MammogramDataset(val_df, checkpoint["config"]), batch_size=16, shuffle=False)
         y_true, y_prob = run_classifier_inference(model, loader, device, multimodal=False)
+        baseline_val_probs, baseline_val_true = y_prob, y_true
         result = select_for_model("whole_image_baseline", y_true, y_prob, target_sensitivity, figures_dir)
         if result:
             result["checkpoint"] = baseline_ckpt
@@ -212,12 +216,25 @@ def main():
         model.load_state_dict(checkpoint["model_state_dict"])
         loader = DataLoader(MultimodalDataset(val_df, checkpoint["config"], tabular_pp), batch_size=16, shuffle=False)
         y_true, y_prob = run_classifier_inference(model, loader, device, multimodal=True)
+        multimodal_val_probs = y_prob  # kept for the ensemble step below
         result = select_for_model("multimodal", y_true, y_prob, target_sensitivity, figures_dir)
         if result:
             result["checkpoint"] = multimodal_ckpt
             out["multimodal"] = result
     else:
         print("  No multimodal checkpoint found — skipping.")
+
+    # --- Ensemble: baseline + multimodal averaged ---
+    # Both loaders above iterate val_df with shuffle=False and identical
+    # dropna filtering, so their probability arrays line up index-for-index
+    # -- same alignment guarantee used in run_phase14_final_evaluation.py's
+    # ensemble step.
+    if baseline_val_probs is not None and multimodal_val_probs is not None:
+        ens_probs = (baseline_val_probs + multimodal_val_probs) / 2.0
+        result = select_for_model("ensemble_baseline_multimodal", baseline_val_true, ens_probs,
+                                   target_sensitivity, figures_dir)
+        if result:
+            out["ensemble_baseline_multimodal"] = result
 
     out_path = os.path.join(metadata_dir, "operating_thresholds.json")
     with open(out_path, "w") as f:

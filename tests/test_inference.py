@@ -178,3 +178,55 @@ def test_gradcam_rejects_unknown_backbone_without_explicit_target_layer(tiny_cla
     from src.explainability.gradcam import GradCAM
     with pytest.raises(ValueError):
         GradCAM(tiny_classifier, backbone_name="not_a_real_backbone")
+
+
+# ---------------------------------------------------------------------
+# Pretrained-encoder U-Net segmentation model (accuracy-improvement follow-up)
+# ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("size", [(224, 224), (256, 256), (250, 250), (192, 320)])
+def test_pretrained_unet_output_shape_matches_input(size):
+    """pretrained=False so this runs offline without downloading ImageNet
+    weights -- tests the architecture's shape mechanics only, at both
+    square/non-square and even/odd resolutions (odd sizes catch decoder
+    upsample/skip-connection size-mismatch bugs that only show up when
+    dimensions don't divide evenly by the encoder's downsampling factor)."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("torchvision")
+    from src.models.segmentation_pretrained import PretrainedUNet
+
+    model = PretrainedUNet(encoder_name="resnet18", pretrained=False)
+    model.eval()
+    x = torch.randn(2, 1, *size)
+    with torch.no_grad():
+        out = model(x)
+    assert out.shape == (2, 1, *size)
+
+
+def test_pretrained_unet_gradients_flow_without_nan():
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("torchvision")
+    from src.models.segmentation_pretrained import PretrainedUNet
+
+    model = PretrainedUNet(encoder_name="resnet18", pretrained=False)
+    x = torch.randn(1, 1, 256, 256, requires_grad=True)
+    out = model(x)
+    out.sum().backward()
+    assert x.grad is not None
+    assert torch.isfinite(x.grad).all()
+
+
+def test_build_segmentation_model_dispatches_on_encoder_config():
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("torchvision")
+    from src.models.segmentation_model import build_segmentation_model, UNet
+    from src.models.segmentation_pretrained import PretrainedUNet
+
+    scratch = build_segmentation_model({"segmentation": {"encoder": "scratch", "base_filters": 8}})
+    assert isinstance(scratch, UNet)
+
+    pretrained = build_segmentation_model({"segmentation": {"encoder": "resnet18", "pretrained": False}})
+    assert isinstance(pretrained, PretrainedUNet)
+
+    with pytest.raises(ValueError):
+        build_segmentation_model({"segmentation": {"encoder": "not_a_real_encoder"}})

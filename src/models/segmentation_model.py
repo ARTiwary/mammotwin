@@ -81,5 +81,13 @@ class UNet(nn.Module):
 
 def build_segmentation_model(config: dict) -> nn.Module:
     seg_cfg = config.get("segmentation", {})
-    base_filters = seg_cfg.get("base_filters", 32)
-    return UNet(in_channels=1, out_channels=1, base_filters=base_filters)
+    encoder = seg_cfg.get("encoder", "scratch")
+    if encoder == "scratch":
+        base_filters = seg_cfg.get("base_filters", 32)
+        return UNet(in_channels=1, out_channels=1, base_filters=base_filters)
+    elif encoder in ("resnet18", "resnet34"):
+        from src.models.segmentation_pretrained import PretrainedUNet
+        return PretrainedUNet(encoder_name=encoder, pretrained=seg_cfg.get("pretrained", True))
+    else:
+        raise ValueError(f"Unknown segmentation encoder: {encoder!r}. "
+                          f"Expected 'scratch', 'resnet18', or 'resnet34'.")

@@ -57,7 +57,14 @@ uncertainty:
   review_threshold: 0.6        # predictions below this confidence get flagged
 
 segmentation:
-  base_filters: 32             # U-Net base channel count (doubles each level)
+  encoder: scratch              # "scratch" (original from-scratch U-Net) or "resnet18"/"resnet34"
+                                 # (pretrained ImageNet encoder -- typically the single highest-
+                                 # leverage change for small-dataset segmentation; see
+                                 # src/models/segmentation_pretrained.py). Override with
+                                 # --encoder resnet18 on the command line rather than editing
+                                 # this file, so scratch stays the safe default.
+  pretrained: true              # only used when encoder is resnet18/resnet34
+  base_filters: 32             # U-Net base channel count (doubles each level) -- only used when encoder: scratch
   batch_size: 8                 # was 4. Segmentation feeds full-resolution image+mask pairs
                                  # through a from-scratch U-Net, so it's more memory-hungry
                                  # per-sample than the classifiers -- if you hit a CUDA

@@ -165,6 +165,11 @@ def main():
                               "vs. false positives. The default (100) is aggressive and can "
                               "encourage overly broad/diffuse predictions; try 20-30 if "
                               "predictions look like they're bleeding into normal tissue.")
+    parser.add_argument("--encoder", type=str, default=None, choices=["scratch", "resnet18", "resnet34"],
+                         help="Overrides config.yaml's segmentation.encoder. 'resnet18'/'resnet34' "
+                              "use a pretrained ImageNet encoder (src/models/segmentation_pretrained.py) "
+                              "instead of the from-scratch U-Net -- typically the highest-leverage "
+                              "single change for improving Dice on a small dataset like this one.")
     args = parser.parse_args()
 
     config = load_config(args.config) if args.config else load_config()
@@ -224,6 +229,9 @@ def main():
                              num_workers=args.num_workers, pin_memory=(device.type == "cuda"),
                              persistent_workers=(args.num_workers > 0))
 
+    if args.encoder is not None:
+        config.setdefault("segmentation", {})["encoder"] = args.encoder
+    print(f"Segmentation encoder: {config['segmentation'].get('encoder', 'scratch')}")
     model = build_segmentation_model(config).to(device)
     criterion = DiceBCELoss(bce_weight=bce_weight, max_pos_weight=args.max_pos_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)

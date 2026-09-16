@@ -55,3 +55,44 @@ def format_metrics_report(metrics: dict) -> str:
     cm = metrics["confusion_matrix"]
     lines.append(f"  Confusion matrix    : TN={cm['tn']} FP={cm['fp']} FN={cm['fn']} TP={cm['tp']}")
     return "\n".join(lines)
+
+
+def plot_confusion_matrix(cm: dict, path: str, title: str = "Confusion Matrix",
+                           class_names=("benign", "malignant")):
+    """
+    Saves a 2x2 confusion matrix heatmap with both raw counts and
+    row-normalized percentages annotated in each cell (e.g. "160\\n61.3%
+    of malignant") -- the percentage is what actually answers "of the
+    real malignant cases, what fraction did we catch," which the raw
+    count alone doesn't make obvious at a glance.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    tn, fp, fn, tp = cm["tn"], cm["fp"], cm["fn"], cm["tp"]
+    matrix = np.array([[tn, fp], [fn, tp]])
+    row_totals = matrix.sum(axis=1, keepdims=True)
+    row_totals[row_totals == 0] = 1  # guard divide-by-zero on a degenerate empty class
+    pct = matrix / row_totals * 100
+
+    fig, ax = plt.subplots(figsize=(4.2, 4))
+    im = ax.imshow(matrix, cmap="Blues")
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+    ax.set_xticklabels([f"Predicted\n{class_names[0]}", f"Predicted\n{class_names[1]}"])
+    ax.set_yticklabels([f"Actual\n{class_names[0]}", f"Actual\n{class_names[1]}"])
+
+    for i in range(2):
+        for j in range(2):
+            color = "white" if matrix[i, j] > matrix.max() / 2 else "black"
+            ax.text(j, i, f"{matrix[i, j]}\n({pct[i, j]:.1f}%)",
+                    ha="center", va="center", color=color, fontsize=12)
+
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path

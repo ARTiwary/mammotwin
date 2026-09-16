@@ -37,7 +37,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from src.utils.config import load_config, set_global_seed, REPO_ROOT
-from src.utils.metrics import compute_classification_metrics, format_metrics_report
+from src.utils.metrics import compute_classification_metrics, format_metrics_report, plot_confusion_matrix
 from src.utils.stats import bootstrap_ci, bootstrap_ci_mean, roc_auc_score, average_precision_score
 from src.utils.calibration import plot_reliability_diagram
 from src.data.dataset import MammogramDataset
@@ -189,13 +189,19 @@ def evaluate_classifier(name, checkpoint_path, test_df, config_override, device,
     print(f"  Brier score: {calib['brier_score']:.4f}")
     print(f"  Saved calibration figure: {calib_path}")
 
+    cm_path = os.path.join(figures_dir, f"phase14_confusion_matrix_{name}.png")
+    plot_confusion_matrix(metrics["confusion_matrix"], cm_path,
+                           title=f"{name} — Test Set (threshold={operating_threshold:.3f})")
+    print(f"  Saved confusion matrix figure: {cm_path}")
+
     return {
         "name": name, "n_test": len(y_true),
+        "y_true": y_true, "y_prob": y_prob,  # exposed for the ensemble step in main()
         "metrics": metrics, "metrics_default_threshold": metrics_default,
         "operating_threshold": operating_threshold,
         "operating_threshold_info": operating_threshold_info,
         "roc_auc_ci": (auc_point, auc_lo, auc_hi), "pr_auc_ci": (pr_point, pr_lo, pr_hi),
-        "brier_score": calib["brier_score"],
+        "brier_score": calib["brier_score"], "confusion_matrix_figure": cm_path,
     }
 
 
@@ -515,6 +521,58 @@ def main():
             "multimodal", figures_dir, args.n_bootstrap, tabular_pp=tabular_pp,
             operating_threshold_info=operating_thresholds.get("multimodal"))
 
+    # --- Ensemble: baseline + multimodal averaged (a standard, legitimate
+    # accuracy-improvement technique -- both cover the exact same test_df
+    # rows in the exact same order, since both apply an identical
+    # dropna(path_col, label_col) filter with no shuffling, so their
+    # y_true/y_prob arrays are safe to combine index-for-index). ---
+    if results.get("baseline") and results.get("multimodal"):
+        print(f"\n{'=' * 70}\nEvaluating ENSEMBLE (baseline + multimodal, averaged) on TEST set\n{'=' * 70}")
+        b, m = results["baseline"], results["multimodal"]
+        if np.array_equal(b["y_true"], m["y_true"]):
+            ens_y_true = b["y_true"]
+            ens_y_prob = (b["y_prob"] + m["y_prob"]) / 2.0
+
+            ens_metrics_default = compute_classification_metrics(ens_y_true, ens_y_prob, threshold=0.5)
+            ens_info = operating_thresholds.get("ensemble_baseline_multimodal")
+            ens_threshold = ens_info["operating_threshold"] if ens_info else 0.5
+            ens_metrics = compute_classification_metrics(ens_y_true, ens_y_prob, threshold=ens_threshold)
+
+            ens_auc, ens_auc_lo, ens_auc_hi = bootstrap_ci(ens_y_true, ens_y_prob, roc_auc_score,
+                                                             n_bootstrap=args.n_bootstrap)
+            ens_pr, ens_pr_lo, ens_pr_hi = bootstrap_ci(ens_y_true, ens_y_prob, average_precision_score,
+                                                          n_bootstrap=args.n_bootstrap)
+            print(f"  ROC-AUC: {ens_auc:.4f}  95% CI: [{ens_auc_lo:.4f}, {ens_auc_hi:.4f}]  "
+                  f"(baseline alone: {b['roc_auc_ci'][0]:.4f}, multimodal alone: {m['roc_auc_ci'][0]:.4f})")
+            if ens_info is None:
+                print("  No tuned ensemble threshold found -- run select_operating_thresholds.py "
+                      "after this to also compute one; reporting at 0.5 for now.")
+            else:
+                print(f"  Operating threshold {ens_threshold:.4f} (selected on VALIDATION set): "
+                      f"sensitivity={ens_metrics['sensitivity']:.3f}  specificity={ens_metrics['specificity']:.3f}")
+
+            cm_path = os.path.join(figures_dir, "phase14_confusion_matrix_ensemble.png")
+            plot_confusion_matrix(ens_metrics["confusion_matrix"], cm_path,
+                                   title=f"ensemble (baseline+multimodal) — Test Set (threshold={ens_threshold:.3f})")
+            print(f"  Saved confusion matrix figure: {cm_path}")
+
+            ens_calib_path = os.path.join(figures_dir, "phase14_calibration_ensemble.png")
+            ens_calib = plot_reliability_diagram(ens_y_true, ens_y_prob, ens_calib_path,
+                                                  title="ensemble (baseline+multimodal) — Test Set Calibration")
+
+            results["ensemble"] = {
+                "name": "ensemble_baseline_multimodal", "n_test": len(ens_y_true),
+                "metrics": ens_metrics, "metrics_default_threshold": ens_metrics_default,
+                "operating_threshold": ens_threshold, "operating_threshold_info": ens_info,
+                "roc_auc_ci": (ens_auc, ens_auc_lo, ens_auc_hi),
+                "pr_auc_ci": (ens_pr, ens_pr_lo, ens_pr_hi),
+                "brier_score": ens_calib["brier_score"],
+                "confusion_matrix_figure": cm_path,
+            }
+        else:
+            print("  Skipped: baseline and multimodal evaluated a different set/order of test "
+                  "images (this shouldn't normally happen) -- cannot safely average their outputs.")
+
     # --- Localization ---
     if not args.skip_localization and bbox_test_df is not None:
         detector_ckpt = args.detector_checkpoint or find_best_checkpoint("7_localization", models_dir, metric_key="val_map")
@@ -567,6 +625,29 @@ def main():
         f.write("This test set was untouched by any training or model-selection decision "
                 "prior to this evaluation.\n\n")
 
+        # --- Dataset split breakdown (train/val/test percentages) ---
+        f.write("## Dataset Split\n\n")
+        try:
+            from src.data.splits import split_summary
+            train_df_split = pd.read_csv(os.path.join(metadata_dir, "train_split.csv"))
+            val_df_split = pd.read_csv(os.path.join(metadata_dir, "val_split.csv"))
+            summary = split_summary(train_df_split, val_df_split, test_df)
+            total_patients = summary["n_patients"].sum()
+            total_rows = summary["n_rows"].sum()
+            f.write("Split at the PATIENT level (see `src/data/splits.py`) -- no patient appears "
+                    "in more than one split, preventing the same patient's images from leaking "
+                    "across train/val/test.\n\n")
+            f.write("| Split | Patients | % of patients | Images (rows) | % of rows | Benign | Malignant |\n")
+            f.write("|---|---|---|---|---|---|---|\n")
+            for _, row in summary.iterrows():
+                pct_patients = row["n_patients"] / total_patients * 100 if total_patients else 0
+                pct_rows = row["n_rows"] / total_rows * 100 if total_rows else 0
+                f.write(f"| {row['split']} | {row['n_patients']} | {pct_patients:.1f}% "
+                        f"| {row['n_rows']} | {pct_rows:.1f}% | {row['n_benign']} | {row['n_malignant']} |\n")
+            f.write("\n")
+        except Exception as e:
+            f.write(f"(Could not compute split summary: {e})\n\n")
+
         f.write("## Classification\n\n")
         f.write("ROC-AUC/PR-AUC are threshold-independent (rank-based) and unaffected by the "
                 "cutoff below. Sensitivity/specificity/balanced accuracy ARE threshold-dependent "
@@ -576,9 +657,9 @@ def main():
                 "(see `select_operating_thresholds.py`).\n\n")
         f.write("| Model | ROC-AUC (95% CI) | PR-AUC (95% CI) | Brier "
                 "| Sens. @0.5 | Spec. @0.5 "
-                "| Operating thr. | Sens. @thr. | Spec. @thr. | Bal.Acc. @thr. | Thr. selected on |\n")
-        f.write("|---|---|---|---|---|---|---|---|---|---|---|\n")
-        for key in ["baseline", "lesion_crop", "multimodal"]:
+                "| Operating thr. | Sens. @thr. | Spec. @thr. | Bal.Acc. @thr. | Thr. selected on | Confusion matrix |\n")
+        f.write("|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+        for key in ["baseline", "lesion_crop", "multimodal", "ensemble"]:
             r = results.get(key)
             if r is None:
                 continue
@@ -593,11 +674,19 @@ def main():
                            f"{', NOT MET' if not info.get('target_met_on_validation', True) else ''})")
             else:
                 thr_str, sel_str = "0.500 (untuned)", "n/a — run select_operating_thresholds.py"
+            cm_fig = os.path.basename(r.get("confusion_matrix_figure", "")) or "n/a"
             f.write(f"| {r['name']} | {auc_p:.3f} [{auc_lo:.3f}, {auc_hi:.3f}] "
                     f"| {pr_p:.3f} [{pr_lo:.3f}, {pr_hi:.3f}] | {r['brier_score']:.3f} "
                     f"| {m_default['sensitivity']:.3f} | {m_default['specificity']:.3f} "
                     f"| {thr_str} | {m_tuned['sensitivity']:.3f} | {m_tuned['specificity']:.3f} "
-                    f"| {m_tuned['balanced_accuracy']:.3f} | {sel_str} |\n")
+                    f"| {m_tuned['balanced_accuracy']:.3f} | {sel_str} | `{cm_fig}` |\n")
+        f.write("\nConfusion matrices are saved as PNG figures in `reports/figures/` "
+                "(filenames listed in the table above), each annotated with both raw counts "
+                "and row-normalized percentages at the model's operating threshold.\n\n"
+                "The `ensemble` row (baseline + multimodal, probabilities averaged) is a "
+                "standard accuracy-improvement technique -- compare its ROC-AUC/CI directly "
+                "against baseline and multimodal alone to see whether averaging genuinely "
+                "helped or just added noise on this test set.\n")
 
         if results.get("localization"):
             f.write("\n## Localization\n\n")
