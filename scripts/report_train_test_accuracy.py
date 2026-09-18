@@ -50,6 +50,15 @@ from src.models.multimodal_model import build_multimodal_model
 from run_phase14_final_evaluation import find_best_checkpoint, run_classifier_inference
 
 
+def merge_pathology_label(bbox_df: pd.DataFrame, split_df: pd.DataFrame) -> pd.DataFrame:
+    """bbox_metadata_*.csv doesn't carry pathology_binary directly -- it
+    has to be merged in from the corresponding split file on image_id,
+    exactly like run_phase9_lesion_crop.py does at training time."""
+    if "pathology_binary" in bbox_df.columns:
+        return bbox_df
+    return bbox_df.merge(split_df[["image_id", "pathology_binary"]], on="image_id", how="left")
+
+
 def evaluate_on_split(name, split_label, checkpoint_path, df, device, figures_dir,
                        dataset_type, tabular_pp=None, operating_threshold=0.5):
     if checkpoint_path is None or not os.path.exists(checkpoint_path):
@@ -71,6 +80,10 @@ def evaluate_on_split(name, split_label, checkpoint_path, df, device, figures_di
         model = build_classifier(config).to(device)
         dataset = MammogramDataset(df, config)
         multimodal = False
+
+    if len(dataset) == 0:
+        print(f"  [{name} / {split_label}] Dataset is empty after filtering — skipping.")
+        return None
 
     model.load_state_dict(checkpoint["model_state_dict"])
     loader = DataLoader(dataset, batch_size=16, shuffle=False)
@@ -132,8 +145,8 @@ def main():
     train_bbox_csv = os.path.join(metadata_dir, "bbox_metadata_train.csv")
     test_bbox_csv = os.path.join(metadata_dir, "bbox_metadata_test.csv")
     if os.path.exists(train_bbox_csv) and os.path.exists(test_bbox_csv):
-        train_bbox_df = pd.read_csv(train_bbox_csv)
-        test_bbox_df = pd.read_csv(test_bbox_csv)
+        train_bbox_df = merge_pathology_label(pd.read_csv(train_bbox_csv), train_df)
+        test_bbox_df = merge_pathology_label(pd.read_csv(test_bbox_csv), test_df)
         ckpt = args.lesion_crop_checkpoint or find_best_checkpoint("9_lesion_crop", models_dir)
         thr = thresholds.get("lesion_crop", {}).get("operating_threshold", 0.5)
         train_r = evaluate_on_split("lesion_crop", "TRAIN", ckpt, train_bbox_df, device, figures_dir,
@@ -142,6 +155,8 @@ def main():
                                     "lesion_crop", operating_threshold=thr)
         if train_r and test_r:
             summary_rows.append(("lesion_crop", train_r, test_r))
+    else:
+        print(f"  Skipping lesion_crop — missing {train_bbox_csv} or {test_bbox_csv}")
 
     # --- Multimodal ---
     ckpt = args.multimodal_checkpoint or find_best_checkpoint("13_multimodal", models_dir)
@@ -162,7 +177,7 @@ def main():
     print("\n" + "=" * 70)
     print("SUMMARY")
     print("=" * 70)
-    print(f"{'Model':<22} {'Train Acc':>10} {'Test Acc':>10} {'Gap':>8}  Interpretation")
+    print(f"{'Model':<22} {'Train Acc':>10} {'Test Acc':>10} {'Gap':>8}  {'Train AUC':>10} {'Test AUC':>10}  Interpretation")
     for name, tr, te in summary_rows:
         gap = tr["accuracy"] - te["accuracy"]
         if gap > 0.15:
@@ -171,12 +186,14 @@ def main():
             note = "Moderate gap -- some overfitting"
         else:
             note = "Small gap -- generalizing reasonably"
-        print(f"{name:<22} {tr['accuracy']:>9.1%} {te['accuracy']:>9.1%} {gap:>+7.1%}  {note}")
+        print(f"{name:<22} {tr['accuracy']:>9.1%} {te['accuracy']:>9.1%} {gap:>+7.1%}  "
+              f"{tr['roc_auc']:>9.3f} {te['roc_auc']:>9.3f}  {note}")
 
     print("\nNote: accuracy at the operating threshold is expected to look worse than")
     print("at 0.5 for BOTH train and test, since the threshold is tuned for high")
-    print("sensitivity, not accuracy. The train-vs-test GAP is what matters here,")
-    print("not the absolute accuracy number.")
+    print("sensitivity, not accuracy. The train-vs-test GAP (in accuracy AND in")
+    print("ROC-AUC, which is threshold-independent) is what matters here, not the")
+    print("absolute accuracy number.")
 
 
 if __name__ == "__main__":
