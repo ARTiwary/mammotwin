@@ -90,5 +90,22 @@
     "seed": 42,
     "patch_size": 256,
     "phase": "8_segmentation"
+  },
+  "lesion_crop_resnet50_20260919_095210": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\lesion_crop_resnet50_20260919_095210.pt",
+    "backbone": "resnet50",
+    "trained_date": "2026-09-19T10:18:06",
+    "val_auc": 0.8227422248803827,
+    "val_pr_auc": 0.773102100783771,
+    "seed": 42,
+    "phase": "9_lesion_crop"
+  },
+  "segmentation_unet_20260919_101818": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\segmentation_unet_20260919_101818.pt",
+    "trained_date": "2026-09-19T13:25:40",
+    "val_dice": 0.22266050908869967,
+    "seed": 42,
+    "patch_size": 256,
+    "phase": "8_segmentation"
   }
 }

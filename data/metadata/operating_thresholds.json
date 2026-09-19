@@ -1,41 +1,53 @@
 {
   "whole_image_baseline": {
-    "operating_threshold": 0.2844948470592499,
+    "operating_threshold": 0.40780580043792725,
     "val_sensitivity_at_threshold": 0.9004739336492891,
-    "val_specificity_at_threshold": 0.2818181818181818,
+    "val_specificity_at_threshold": 0.36666666666666664,
     "target_sensitivity": 0.9,
     "target_met_on_validation": true,
-    "youden_reference_threshold": 0.4249168932437897,
+    "youden_reference_threshold": 0.615202009677887,
     "n_validation_examples": 541,
     "selected_on": "validation_split_only",
     "figure": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\reports/figures\\threshold_selection_whole_image_baseline.png",
-    "selected_at": "2026-09-14T22:14:38",
-    "checkpoint": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\baseline_resnet50_20260831_193348.pt"
+    "selected_at": "2026-09-19T22:51:39",
+    "checkpoint": "models\\baseline_resnet50_20260913_175719.pt"
   },
   "lesion_crop": {
-    "operating_threshold": 0.04756138473749161,
+    "operating_threshold": 0.18903639912605286,
     "val_sensitivity_at_threshold": 0.9043062200956937,
-    "val_specificity_at_threshold": 0.259375,
+    "val_specificity_at_threshold": 0.446875,
     "target_sensitivity": 0.9,
     "target_met_on_validation": true,
-    "youden_reference_threshold": 0.736171305179596,
+    "youden_reference_threshold": 0.5241122841835022,
     "n_validation_examples": 529,
     "selected_on": "validation_split_only",
     "figure": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\reports/figures\\threshold_selection_lesion_crop.png",
-    "selected_at": "2026-09-14T22:15:36",
-    "checkpoint": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\lesion_crop_resnet50_20260831_220226.pt"
+    "selected_at": "2026-09-19T22:52:12",
+    "checkpoint": "models\\lesion_crop_resnet50_20260919_095210.pt"
   },
   "multimodal": {
-    "operating_threshold": 0.15005497634410858,
+    "operating_threshold": 0.18053115904331207,
     "val_sensitivity_at_threshold": 0.9004739336492891,
-    "val_specificity_at_threshold": 0.31212121212121213,
+    "val_specificity_at_threshold": 0.5515151515151515,
     "target_sensitivity": 0.9,
     "target_met_on_validation": true,
-    "youden_reference_threshold": 0.18326658010482788,
+    "youden_reference_threshold": 0.44029587507247925,
     "n_validation_examples": 541,
     "selected_on": "validation_split_only",
     "figure": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\reports/figures\\threshold_selection_multimodal.png",
-    "selected_at": "2026-09-14T22:20:57",
-    "checkpoint": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\multimodal_resnet50_20260902_174117.pt"
+    "selected_at": "2026-09-19T22:54:24",
+    "checkpoint": "models\\multimodal_resnet50_20260913_192536.pt"
+  },
+  "ensemble_baseline_multimodal": {
+    "operating_threshold": 0.3581809401512146,
+    "val_sensitivity_at_threshold": 0.9004739336492891,
+    "val_specificity_at_threshold": 0.5848484848484848,
+    "target_sensitivity": 0.9,
+    "target_met_on_validation": true,
+    "youden_reference_threshold": 0.4558185338973999,
+    "n_validation_examples": 541,
+    "selected_on": "validation_split_only",
+    "figure": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\reports/figures\\threshold_selection_ensemble_baseline_multimodal.png",
+    "selected_at": "2026-09-19T22:54:24"
   }
 }
