@@ -107,5 +107,14 @@
     "seed": 42,
     "patch_size": 256,
     "phase": "8_segmentation"
+  },
+  "detector_fasterrcnn_20260921_143223": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\detector_fasterrcnn_20260921_143223.pt",
+    "trained_date": "2026-09-21T18:33:33",
+    "val_map": 0.03848611285363586,
+    "val_map_50": 0.11005621567819802,
+    "val_mean_top1_iou": 0.16552581286815726,
+    "seed": 42,
+    "phase": "7_localization"
   }
 }
