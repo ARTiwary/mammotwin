@@ -116,5 +116,14 @@
     "val_mean_top1_iou": 0.16552581286815726,
     "seed": 42,
     "phase": "7_localization"
+  },
+  "multimodal_resnet50_20260922_092525": {
+    "checkpoint_path": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\models\\multimodal_resnet50_20260922_092525.pt",
+    "backbone": "resnet50",
+    "trained_date": "2026-09-22T10:27:26",
+    "val_auc": 0.7604337210972282,
+    "val_pr_auc": 0.6647541430751683,
+    "seed": 42,
+    "phase": "13_multimodal"
   }
 }

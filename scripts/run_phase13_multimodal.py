@@ -222,10 +222,18 @@ def main():
                              num_workers=args.num_workers, pin_memory=(device.type == "cuda"), persistent_workers=(args.num_workers > 0))
 
     model = build_multimodal_model(config, tabular_input_dim=tabular_pp.output_dim).to(device)
+
+    from src.utils.regularization import freeze_resnet_early_layers
+    n_frozen, n_trainable = freeze_resnet_early_layers(model, unfreeze_from="layer4")
+    print(f"Froze {n_frozen:,} params ({n_frozen/(n_frozen+n_trainable):.1%}), {n_trainable:,} remain trainable")
+
     class_weights = compute_class_weights(train_dataset.class_counts(), config["model"]["num_classes"]).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr,
-                                  weight_decay=config["training"].get("weight_decay", 0.0))
+    optimizer = torch.optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()),  # <-- must filter here too
+        lr=lr,
+        weight_decay=config["training"].get("weight_decay", 0.0),
+    )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=2)
 
     models_dir = config["paths"]["models_dir"]

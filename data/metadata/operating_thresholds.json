@@ -49,5 +49,13 @@
     "selected_on": "validation_split_only",
     "figure": "C:\\Users\\21ayu\\Desktop\\memo\\mammotwin\\reports/figures\\threshold_selection_ensemble_baseline_multimodal.png",
     "selected_at": "2026-09-19T22:54:24"
+  },
+  "ensemble_lesion_crop_multimodal": {
+    "operating_threshold": 0.3045252561569214,
+    "target_sensitivity": 0.9,
+    "target_met_on_validation": true,
+    "val_sensitivity_at_threshold": 0.9043062200956937,
+    "val_specificity_at_threshold": 0.61875,
+    "selected_on": "validation_split_only (lesion_crop + multimodal merged on image_id)"
   }
 }

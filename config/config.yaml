@@ -33,7 +33,7 @@ training:
                                  # hit a CUDA out-of-memory error, override per-run instead of
                                  # editing this file: --batch-size 16 (or 8).
   learning_rate: 0.0001
-  weight_decay: 0.00001
+  weight_decay: 0.0001
   num_epochs: 30
   num_workers: 4
   early_stopping_patience: 5

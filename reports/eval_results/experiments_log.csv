@@ -7,3 +7,4 @@ baseline_resnet50_20260831_193348,2026-08-31T22:02:15,6_baseline,resnet50,train/
 lesion_crop_resnet50_20260831_220226,2026-08-31T22:36:37,9_lesion_crop,resnet50,train/val,42,"epochs=30,batch_size=16,lr=0.0001,crop_padding=0.2",0.7311,0.6647,,,
 multimodal_resnet50_20260902_174117,2026-09-02T19:13:09,13_multimodal,resnet50,train/val,42,"epochs=30,batch_size=32,lr=0.0001",0.8295,0.7831,,,
 lesion_crop_resnet50_20260919_095210,2026-09-19T10:18:06,9_lesion_crop,resnet50,train/val,42,"epochs=30,batch_size=32,lr=0.0001,crop_padding=0.2",0.8227,0.7731,,,
+multimodal_resnet50_20260922_092525,2026-09-22T10:27:26,13_multimodal,resnet50,train/val,42,"epochs=30,batch_size=32,lr=0.0001",0.7604,0.6648,,,
