@@ -224,7 +224,7 @@ def main():
     model = build_multimodal_model(config, tabular_input_dim=tabular_pp.output_dim).to(device)
 
     from src.utils.regularization import freeze_resnet_early_layers
-    n_frozen, n_trainable = freeze_resnet_early_layers(model, unfreeze_from="layer4")
+    n_frozen, n_trainable = freeze_resnet_early_layers(model, unfreeze_from="layer3")
     print(f"Froze {n_frozen:,} params ({n_frozen/(n_frozen+n_trainable):.1%}), {n_trainable:,} remain trainable")
 
     class_weights = compute_class_weights(train_dataset.class_counts(), config["model"]["num_classes"]).to(device)
